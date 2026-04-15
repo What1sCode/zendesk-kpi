@@ -1,3 +1,98 @@
+// Business hours: Monday-Friday, 8am-5pm America/New_York
+const BIZ_START_HOUR = 8;
+const BIZ_END_HOUR = 17;
+const TZ = 'America/New_York';
+
+// Convert a UTC Date to Eastern time components
+function toEastern(utcDate) {
+  const parts = {};
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    weekday: 'short',
+    hour12: false,
+  });
+  for (const { type, value } of fmt.formatToParts(utcDate)) {
+    parts[type] = value;
+  }
+  return {
+    year: +parts.year,
+    month: +parts.month,
+    day: +parts.day,
+    hours: +parts.hour === 24 ? 0 : +parts.hour,
+    minutes: +parts.minute,
+    seconds: +parts.second,
+    weekday: parts.weekday,
+    isWeekday: !['Sat', 'Sun'].includes(parts.weekday),
+  };
+}
+
+// Get UTC timestamp for a specific ET date/time
+// dateStr: "YYYY-MM-DD", hour: 0-23
+function etToUtc(year, month, day, hour, minute = 0, second = 0) {
+  // Create a date string that Intl can resolve with the correct offset
+  // Build an approximate UTC date, then adjust
+  const approx = new Date(Date.UTC(year, month - 1, day, hour + 5, minute, second)); // rough EST guess
+  const et = toEastern(approx);
+  const diffMs =
+    (hour - et.hours) * 3600000 +
+    (minute - et.minutes) * 60000 +
+    (second - et.seconds) * 1000;
+  return new Date(approx.getTime() + diffMs);
+}
+
+// Calculate business seconds between two UTC Date objects
+// Uses a day-by-day approach to avoid cursor-jumping bugs
+function businessSeconds(startUtc, endUtc) {
+  if (endUtc <= startUtc) return 0;
+
+  let total = 0;
+
+  // Get the ET date range
+  const startET = toEastern(startUtc);
+  const endET = toEastern(endUtc);
+
+  // Iterate from start date to end date (ET calendar days)
+  // Max reasonable span: ~365 days
+  let currentYear = startET.year;
+  let currentMonth = startET.month;
+  let currentDay = startET.day;
+
+  for (let i = 0; i < 400; i++) {
+    const dayStartUtc = etToUtc(currentYear, currentMonth, currentDay, BIZ_START_HOUR);
+    const dayEndUtc = etToUtc(currentYear, currentMonth, currentDay, BIZ_END_HOUR);
+    const dayET = toEastern(dayStartUtc);
+
+    if (dayStartUtc >= endUtc) break; // Past the end
+
+    if (dayET.isWeekday) {
+      // Calculate overlap between [startUtc, endUtc] and [dayStartUtc, dayEndUtc]
+      const overlapStart = startUtc > dayStartUtc ? startUtc : dayStartUtc;
+      const overlapEnd = endUtc < dayEndUtc ? endUtc : dayEndUtc;
+
+      if (overlapEnd > overlapStart) {
+        total += (overlapEnd - overlapStart) / 1000;
+      }
+    }
+
+    // Move to next day
+    const next = new Date(dayStartUtc);
+    next.setUTCDate(next.getUTCDate() + 1);
+    // Re-resolve to avoid DST drift
+    const nextET = toEastern(next);
+    currentYear = nextET.year;
+    currentMonth = nextET.month;
+    currentDay = nextET.day;
+  }
+
+  return total;
+}
+
 export function calculateTicketMetrics(ticket, audits) {
   const now = new Date();
 
@@ -24,15 +119,18 @@ export function calculateTicketMetrics(ticket, audits) {
     timeline.push({ timestamp: change.timestamp, status: change.to });
   }
 
-  // Calculate duration in each status
+  // Calculate calendar duration and business hours duration in each status
   const durations = { new: 0, open: 0, pending: 0 };
+  const bizDurations = { new: 0, open: 0, pending: 0 };
+
   for (let i = 0; i < timeline.length; i++) {
     const start = new Date(timeline[i].timestamp);
     const end = i + 1 < timeline.length ? new Date(timeline[i + 1].timestamp) : now;
     const status = timeline[i].status;
 
     if (status in durations) {
-      durations[status] += (end - start) / 1000; // seconds
+      durations[status] += (end - start) / 1000;
+      bizDurations[status] += businessSeconds(start, end);
     }
   }
 
@@ -49,6 +147,9 @@ export function calculateTicketMetrics(ticket, audits) {
     timeInNew: durations.new,
     timeInOpen: durations.open,
     timeInPending: durations.pending,
+    bizTimeInNew: bizDurations.new,
+    bizTimeInOpen: bizDurations.open,
+    bizTimeInPending: bizDurations.pending,
     flapping,
   };
 }
@@ -67,6 +168,9 @@ export function aggregateByAssignee(ticketMetrics, usersMap) {
         totalTimeInNew: 0,
         totalTimeInOpen: 0,
         totalTimeInPending: 0,
+        totalBizTimeInNew: 0,
+        totalBizTimeInOpen: 0,
+        totalBizTimeInPending: 0,
         totalFlapping: 0,
       };
     }
@@ -75,22 +179,34 @@ export function aggregateByAssignee(ticketMetrics, usersMap) {
     agg.totalTimeInNew += tm.timeInNew;
     agg.totalTimeInOpen += tm.timeInOpen;
     agg.totalTimeInPending += tm.timeInPending;
+    agg.totalBizTimeInNew += tm.bizTimeInNew;
+    agg.totalBizTimeInOpen += tm.bizTimeInOpen;
+    agg.totalBizTimeInPending += tm.bizTimeInPending;
     agg.totalFlapping += tm.flapping;
   }
 
   // Calculate averages and medians
-  return Object.values(byAssignee).map((agg) => ({
-    ...agg,
-    ticketCount: agg.tickets.length,
-    avgTimeInNew: agg.tickets.length ? agg.totalTimeInNew / agg.tickets.length : 0,
-    avgTimeInOpen: agg.tickets.length ? agg.totalTimeInOpen / agg.tickets.length : 0,
-    avgTimeInPending: agg.tickets.length ? agg.totalTimeInPending / agg.tickets.length : 0,
-    avgFlapping: agg.tickets.length ? agg.totalFlapping / agg.tickets.length : 0,
-    medTimeInNew: median(agg.tickets.map((t) => t.timeInNew)),
-    medTimeInOpen: median(agg.tickets.map((t) => t.timeInOpen)),
-    medTimeInPending: median(agg.tickets.map((t) => t.timeInPending)),
-    medFlapping: median(agg.tickets.map((t) => t.flapping)),
-  }));
+  return Object.values(byAssignee).map((agg) => {
+    const n = agg.tickets.length;
+    return {
+      ...agg,
+      ticketCount: n,
+      avgTimeInNew: n ? agg.totalTimeInNew / n : 0,
+      avgTimeInOpen: n ? agg.totalTimeInOpen / n : 0,
+      avgTimeInPending: n ? agg.totalTimeInPending / n : 0,
+      avgFlapping: n ? agg.totalFlapping / n : 0,
+      medTimeInNew: median(agg.tickets.map((t) => t.timeInNew)),
+      medTimeInOpen: median(agg.tickets.map((t) => t.timeInOpen)),
+      medTimeInPending: median(agg.tickets.map((t) => t.timeInPending)),
+      medFlapping: median(agg.tickets.map((t) => t.flapping)),
+      avgBizTimeInNew: n ? agg.totalBizTimeInNew / n : 0,
+      avgBizTimeInOpen: n ? agg.totalBizTimeInOpen / n : 0,
+      avgBizTimeInPending: n ? agg.totalBizTimeInPending / n : 0,
+      medBizTimeInNew: median(agg.tickets.map((t) => t.bizTimeInNew)),
+      medBizTimeInOpen: median(agg.tickets.map((t) => t.bizTimeInOpen)),
+      medBizTimeInPending: median(agg.tickets.map((t) => t.bizTimeInPending)),
+    };
+  });
 }
 
 function median(values) {

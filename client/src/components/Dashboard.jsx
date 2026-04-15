@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import GroupSelector from './GroupSelector';
 import DateRangePicker from './DateRangePicker';
 import MetricsTable from './MetricsTable';
-import StatusBadge from './StatusBadge';
 
 function formatDuration(seconds) {
   if (seconds == null || isNaN(seconds)) return '—';
@@ -23,6 +22,7 @@ export default function Dashboard() {
   const [statusMessage, setStatusMessage] = useState('');
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [useBizHours, setUseBizHours] = useState(true);
   const eventSourceRef = useRef(null);
 
   // Default dates: last 30 days
@@ -37,7 +37,6 @@ export default function Dashboard() {
   function handleGenerate() {
     if (!groupId || !startDate || !endDate) return;
 
-    // Close any existing connection
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
@@ -79,6 +78,10 @@ export default function Dashboard() {
     };
   }
 
+  // Helper to pick biz or calendar field
+  const t = data?.totals;
+  const pre = useBizHours ? 'Biz' : '';
+
   return (
     <div className="space-y-6">
       {/* Filter Bar */}
@@ -100,7 +103,6 @@ export default function Dashboard() {
           </button>
         </div>
 
-        {/* Progress Bar */}
         {loading && (
           <div className="mt-4">
             <p className="text-sm text-gray-600 mb-1">{statusMessage}</p>
@@ -122,37 +124,66 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Summary Cards */}
       {data && (
         <>
+          {/* Time Mode Toggle */}
+          <div className="flex items-center gap-3">
+            <span className={`text-sm font-medium ${!useBizHours ? 'text-gray-900' : 'text-gray-400'}`}>
+              Calendar Time
+            </span>
+            <button
+              onClick={() => setUseBizHours(!useBizHours)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                useBizHours ? 'bg-blue-600' : 'bg-gray-300'
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  useBizHours ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+            <span className={`text-sm font-medium ${useBizHours ? 'text-gray-900' : 'text-gray-400'}`}>
+              Business Hours
+            </span>
+            {useBizHours && (
+              <span className="text-xs text-gray-500">(Mon-Fri, 8am-5pm ET)</span>
+            )}
+          </div>
+
+          {/* Summary Cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <SummaryCard
               label="Avg Time in New"
-              value={formatDuration(data.totals.avgTimeInNew)}
-              subtitle={`Median: ${formatDuration(data.totals.medTimeInNew)}`}
+              value={formatDuration(t[`avg${pre}TimeInNew`])}
+              subtitle={`Median: ${formatDuration(t[`med${pre}TimeInNew`])}`}
               color="blue"
             />
             <SummaryCard
               label="Avg Time in Open"
-              value={formatDuration(data.totals.avgTimeInOpen)}
-              subtitle={`Median: ${formatDuration(data.totals.medTimeInOpen)}`}
+              value={formatDuration(t[`avg${pre}TimeInOpen`])}
+              subtitle={`Median: ${formatDuration(t[`med${pre}TimeInOpen`])}`}
               color="red"
             />
             <SummaryCard
               label="Avg Time in Pending"
-              value={formatDuration(data.totals.avgTimeInPending)}
-              subtitle={`Median: ${formatDuration(data.totals.medTimeInPending)}`}
+              value={formatDuration(t[`avg${pre}TimeInPending`])}
+              subtitle={`Median: ${formatDuration(t[`med${pre}TimeInPending`])}`}
               color="yellow"
             />
             <SummaryCard
               label="Avg Flapping"
-              value={data.totals.avgFlapping.toFixed(1)}
-              subtitle={`Median: ${data.totals.medFlapping} | ${data.totals.totalFlapping} total across ${data.ticketCount} tickets`}
+              value={t.avgFlapping.toFixed(1)}
+              subtitle={`Median: ${t.medFlapping} | ${t.totalFlapping} total across ${data.ticketCount} tickets`}
               color="purple"
             />
           </div>
 
-          <MetricsTable assignees={data.assignees} formatDuration={formatDuration} />
+          <MetricsTable
+            assignees={data.assignees}
+            formatDuration={formatDuration}
+            useBizHours={useBizHours}
+          />
         </>
       )}
     </div>

@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import StatusBadge from './StatusBadge';
 
-export default function MetricsTable({ assignees, formatDuration }) {
+export default function MetricsTable({ assignees, formatDuration, useBizHours }) {
   const [expandedUser, setExpandedUser] = useState(null);
   const [sortField, setSortField] = useState('ticketCount');
   const [sortDir, setSortDir] = useState('desc');
+
+  const pre = useBizHours ? 'Biz' : '';
 
   function handleSort(field) {
     if (sortField === field) {
@@ -17,7 +19,7 @@ export default function MetricsTable({ assignees, formatDuration }) {
 
   const sorted = [...assignees].sort((a, b) => {
     const mult = sortDir === 'asc' ? 1 : -1;
-    return (a[sortField] - b[sortField]) * mult;
+    return ((a[sortField] ?? 0) - (b[sortField] ?? 0)) * mult;
   });
 
   const SortHeader = ({ field, children }) => (
@@ -35,7 +37,7 @@ export default function MetricsTable({ assignees, formatDuration }) {
   );
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-x-auto">
       <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50">
           <tr>
@@ -43,12 +45,12 @@ export default function MetricsTable({ assignees, formatDuration }) {
               Assignee
             </th>
             <SortHeader field="ticketCount">Tickets</SortHeader>
-            <SortHeader field="avgTimeInNew">Avg New</SortHeader>
-            <SortHeader field="medTimeInNew">Med New</SortHeader>
-            <SortHeader field="avgTimeInOpen">Avg Open</SortHeader>
-            <SortHeader field="medTimeInOpen">Med Open</SortHeader>
-            <SortHeader field="avgTimeInPending">Avg Pending</SortHeader>
-            <SortHeader field="medTimeInPending">Med Pending</SortHeader>
+            <SortHeader field={`avg${pre}TimeInNew`}>Avg New</SortHeader>
+            <SortHeader field={`med${pre}TimeInNew`}>Med New</SortHeader>
+            <SortHeader field={`avg${pre}TimeInOpen`}>Avg Open</SortHeader>
+            <SortHeader field={`med${pre}TimeInOpen`}>Med Open</SortHeader>
+            <SortHeader field={`avg${pre}TimeInPending`}>Avg Pending</SortHeader>
+            <SortHeader field={`med${pre}TimeInPending`}>Med Pending</SortHeader>
             <SortHeader field="avgFlapping">Avg Flap</SortHeader>
             <SortHeader field="medFlapping">Med Flap</SortHeader>
           </tr>
@@ -58,11 +60,13 @@ export default function MetricsTable({ assignees, formatDuration }) {
             <UserRow
               key={agg.assigneeId}
               agg={agg}
+              pre={pre}
               expanded={expandedUser === agg.assigneeId}
               onToggle={() =>
                 setExpandedUser(expandedUser === agg.assigneeId ? null : agg.assigneeId)
               }
               formatDuration={formatDuration}
+              useBizHours={useBizHours}
             />
           ))}
         </tbody>
@@ -71,7 +75,7 @@ export default function MetricsTable({ assignees, formatDuration }) {
   );
 }
 
-function UserRow({ agg, expanded, onToggle, formatDuration }) {
+function UserRow({ agg, pre, expanded, onToggle, formatDuration, useBizHours }) {
   return (
     <>
       <tr
@@ -86,22 +90,22 @@ function UserRow({ agg, expanded, onToggle, formatDuration }) {
         </td>
         <td className="px-4 py-3 text-sm text-gray-700">{agg.ticketCount}</td>
         <td className="px-4 py-3 text-sm text-blue-700 font-mono">
-          {formatDuration(agg.avgTimeInNew)}
+          {formatDuration(agg[`avg${pre}TimeInNew`])}
         </td>
         <td className="px-4 py-3 text-sm text-blue-500 font-mono">
-          {formatDuration(agg.medTimeInNew)}
+          {formatDuration(agg[`med${pre}TimeInNew`])}
         </td>
         <td className="px-4 py-3 text-sm text-red-700 font-mono">
-          {formatDuration(agg.avgTimeInOpen)}
+          {formatDuration(agg[`avg${pre}TimeInOpen`])}
         </td>
         <td className="px-4 py-3 text-sm text-red-500 font-mono">
-          {formatDuration(agg.medTimeInOpen)}
+          {formatDuration(agg[`med${pre}TimeInOpen`])}
         </td>
         <td className="px-4 py-3 text-sm text-yellow-700 font-mono">
-          {formatDuration(agg.avgTimeInPending)}
+          {formatDuration(agg[`avg${pre}TimeInPending`])}
         </td>
         <td className="px-4 py-3 text-sm text-yellow-500 font-mono">
-          {formatDuration(agg.medTimeInPending)}
+          {formatDuration(agg[`med${pre}TimeInPending`])}
         </td>
         <td className="px-4 py-3 text-sm text-purple-700 font-mono">
           {agg.avgFlapping.toFixed(1)}
@@ -114,7 +118,11 @@ function UserRow({ agg, expanded, onToggle, formatDuration }) {
       {expanded && (
         <tr>
           <td colSpan={10} className="px-0 py-0">
-            <TicketDrillDown tickets={agg.tickets} formatDuration={formatDuration} />
+            <TicketDrillDown
+              tickets={agg.tickets}
+              formatDuration={formatDuration}
+              useBizHours={useBizHours}
+            />
           </td>
         </tr>
       )}
@@ -122,8 +130,8 @@ function UserRow({ agg, expanded, onToggle, formatDuration }) {
   );
 }
 
-function TicketDrillDown({ tickets, formatDuration }) {
-  const subdomain = 'elotouchcare'; // Could be made configurable
+function TicketDrillDown({ tickets, formatDuration, useBizHours }) {
+  const subdomain = 'elotouchcare';
 
   return (
     <div className="bg-gray-50 border-t border-b border-gray-200">
@@ -156,10 +164,14 @@ function TicketDrillDown({ tickets, formatDuration }) {
               <td className="px-4 py-2">
                 <StatusBadge status={t.status} />
               </td>
-              <td className="px-4 py-2 text-blue-700 font-mono">{formatDuration(t.timeInNew)}</td>
-              <td className="px-4 py-2 text-red-700 font-mono">{formatDuration(t.timeInOpen)}</td>
+              <td className="px-4 py-2 text-blue-700 font-mono">
+                {formatDuration(useBizHours ? t.bizTimeInNew : t.timeInNew)}
+              </td>
+              <td className="px-4 py-2 text-red-700 font-mono">
+                {formatDuration(useBizHours ? t.bizTimeInOpen : t.timeInOpen)}
+              </td>
               <td className="px-4 py-2 text-yellow-700 font-mono">
-                {formatDuration(t.timeInPending)}
+                {formatDuration(useBizHours ? t.bizTimeInPending : t.timeInPending)}
               </td>
               <td className="px-4 py-2 text-purple-700 font-mono">{t.flapping}</td>
             </tr>

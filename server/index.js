@@ -96,17 +96,24 @@ app.get('/api/metrics/stream', async (req, res) => {
 
     // Group-level totals
     const totalTickets = ticketMetrics.length;
+    const n = totalTickets;
     const totals = {
-      ticketCount: totalTickets,
-      avgTimeInNew: totalTickets ? ticketMetrics.reduce((s, t) => s + t.timeInNew, 0) / totalTickets : 0,
-      avgTimeInOpen: totalTickets ? ticketMetrics.reduce((s, t) => s + t.timeInOpen, 0) / totalTickets : 0,
-      avgTimeInPending: totalTickets ? ticketMetrics.reduce((s, t) => s + t.timeInPending, 0) / totalTickets : 0,
-      avgFlapping: totalTickets ? ticketMetrics.reduce((s, t) => s + t.flapping, 0) / totalTickets : 0,
+      ticketCount: n,
+      avgTimeInNew: n ? ticketMetrics.reduce((s, t) => s + t.timeInNew, 0) / n : 0,
+      avgTimeInOpen: n ? ticketMetrics.reduce((s, t) => s + t.timeInOpen, 0) / n : 0,
+      avgTimeInPending: n ? ticketMetrics.reduce((s, t) => s + t.timeInPending, 0) / n : 0,
+      avgFlapping: n ? ticketMetrics.reduce((s, t) => s + t.flapping, 0) / n : 0,
       totalFlapping: ticketMetrics.reduce((s, t) => s + t.flapping, 0),
       medTimeInNew: median(ticketMetrics.map((t) => t.timeInNew)),
       medTimeInOpen: median(ticketMetrics.map((t) => t.timeInOpen)),
       medTimeInPending: median(ticketMetrics.map((t) => t.timeInPending)),
       medFlapping: median(ticketMetrics.map((t) => t.flapping)),
+      avgBizTimeInNew: n ? ticketMetrics.reduce((s, t) => s + t.bizTimeInNew, 0) / n : 0,
+      avgBizTimeInOpen: n ? ticketMetrics.reduce((s, t) => s + t.bizTimeInOpen, 0) / n : 0,
+      avgBizTimeInPending: n ? ticketMetrics.reduce((s, t) => s + t.bizTimeInPending, 0) / n : 0,
+      medBizTimeInNew: median(ticketMetrics.map((t) => t.bizTimeInNew)),
+      medBizTimeInOpen: median(ticketMetrics.map((t) => t.bizTimeInOpen)),
+      medBizTimeInPending: median(ticketMetrics.map((t) => t.bizTimeInPending)),
     };
 
     send({
