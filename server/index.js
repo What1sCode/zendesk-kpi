@@ -52,9 +52,19 @@ app.get('/api/metrics/stream', async (req, res) => {
     const tickets = await searchTickets(group_id, start, end, (msg) => {
       send({ type: 'status', message: msg });
     });
-    send({ type: 'status', message: `Found ${tickets.length} tickets. Fetching audits...` });
+    // Filter out automated/notification tickets
+    const EXCLUDED_SUBJECTS = [
+      'Customer signup notification',
+      'Customer cancelled subscription',
+      'Customer subscription expired',
+    ];
+    const filtered = tickets.filter(
+      (t) => !EXCLUDED_SUBJECTS.some((s) => t.subject === s)
+    );
+    send({ type: 'status', message: `Found ${tickets.length} tickets (${filtered.length} after filtering). Fetching audits...` });
+    const ticketsToProcess = filtered;
 
-    if (tickets.length === 0) {
+    if (ticketsToProcess.length === 0) {
       send({ type: 'complete', data: { assignees: [], totals: {}, ticketCount: 0 } });
       res.end();
       return;
@@ -66,7 +76,7 @@ app.get('/api/metrics/stream', async (req, res) => {
 
     // Also collect any assignee IDs not in the group (edge case)
     const extraIds = new Set();
-    for (const t of tickets) {
+    for (const t of ticketsToProcess) {
       if (t.assignee_id && !usersMap.has(t.assignee_id)) {
         extraIds.add(t.assignee_id);
       }
@@ -77,8 +87,8 @@ app.get('/api/metrics/stream', async (req, res) => {
     const ticketMetrics = [];
     let completed = 0;
 
-    for (let i = 0; i < tickets.length; i += CONCURRENCY) {
-      const batch = tickets.slice(i, i + CONCURRENCY);
+    for (let i = 0; i < ticketsToProcess.length; i += CONCURRENCY) {
+      const batch = ticketsToProcess.slice(i, i + CONCURRENCY);
       const results = await Promise.all(
         batch.map(async (ticket) => {
           const audits = await getTicketAudits(ticket.id);
@@ -87,7 +97,7 @@ app.get('/api/metrics/stream', async (req, res) => {
       );
       ticketMetrics.push(...results);
       completed += batch.length;
-      send({ type: 'progress', current: completed, total: tickets.length });
+      send({ type: 'progress', current: completed, total: ticketsToProcess.length });
     }
 
     // Step 4: Aggregate
