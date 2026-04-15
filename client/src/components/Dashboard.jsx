@@ -13,6 +13,33 @@ function formatDuration(seconds) {
   return `${minutes}m`;
 }
 
+function Toggle({ left, right, active, onToggle, hint }) {
+  const isRight = active === 'right';
+  return (
+    <div className="flex items-center gap-3">
+      <span className={`text-sm font-medium ${!isRight ? 'text-gray-900' : 'text-gray-400'}`}>
+        {left}
+      </span>
+      <button
+        onClick={onToggle}
+        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+          isRight ? 'bg-blue-600' : 'bg-gray-300'
+        }`}
+      >
+        <span
+          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+            isRight ? 'translate-x-6' : 'translate-x-1'
+          }`}
+        />
+      </button>
+      <span className={`text-sm font-medium ${isRight ? 'text-gray-900' : 'text-gray-400'}`}>
+        {right}
+      </span>
+      {hint && <span className="text-xs text-gray-500">{hint}</span>}
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [groupId, setGroupId] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -23,9 +50,9 @@ export default function Dashboard() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [useBizHours, setUseBizHours] = useState(true);
+  const [useMedian, setUseMedian] = useState(false);
   const eventSourceRef = useRef(null);
 
-  // Default dates: last 30 days
   useEffect(() => {
     const end = new Date();
     const start = new Date();
@@ -78,9 +105,10 @@ export default function Dashboard() {
     };
   }
 
-  // Helper to pick biz or calendar field
   const t = data?.totals;
-  const pre = useBizHours ? 'Biz' : '';
+  const biz = useBizHours ? 'Biz' : '';
+  const am = useMedian ? 'med' : 'avg';
+  const label = useMedian ? 'Median' : 'Avg';
 
   return (
     <div className="space-y-6">
@@ -126,67 +154,55 @@ export default function Dashboard() {
 
       {data && (
         <>
-          {/* Time Mode Toggle */}
-          <div className="flex items-center gap-3">
-            <span className={`text-sm font-medium ${!useBizHours ? 'text-gray-900' : 'text-gray-400'}`}>
-              Calendar Time
-            </span>
-            <button
-              onClick={() => setUseBizHours(!useBizHours)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                useBizHours ? 'bg-blue-600' : 'bg-gray-300'
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  useBizHours ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
-            <span className={`text-sm font-medium ${useBizHours ? 'text-gray-900' : 'text-gray-400'}`}>
-              Business Hours
-            </span>
-            {useBizHours && (
-              <span className="text-xs text-gray-500">(Mon-Fri, 8am-5pm ET)</span>
-            )}
+          {/* Toggles */}
+          <div className="flex flex-wrap items-center gap-6">
+            <Toggle
+              left="Calendar Time"
+              right="Business Hours"
+              active={useBizHours ? 'right' : 'left'}
+              onToggle={() => setUseBizHours(!useBizHours)}
+              hint={useBizHours ? '(Mon-Fri, 8am-5pm ET)' : null}
+            />
+            <Toggle
+              left="Average"
+              right="Median"
+              active={useMedian ? 'right' : 'left'}
+              onToggle={() => setUseMedian(!useMedian)}
+            />
           </div>
 
           {/* Summary Cards */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <SummaryCard
-              label="Avg Pickup Time"
-              value={formatDuration(t.avgPickupTime)}
-              subtitle={`Median: ${formatDuration(t.medPickupTime)} (biz hrs)`}
+              label={`${label} Pickup Time`}
+              value={formatDuration(useMedian ? t.medPickupTime : t.avgPickupTime)}
+              subtitle="biz hours only"
               color="green"
             />
             <SummaryCard
-              label="Avg Time to Close"
-              value={formatDuration(useBizHours ? t.avgBizTimeToClose : t.avgTimeToClose)}
-              subtitle={`Median: ${formatDuration(useBizHours ? t.medBizTimeToClose : t.medTimeToClose)}`}
+              label={`${label} Time to Close`}
+              value={formatDuration(t[`${am}${biz}TimeToClose`])}
               color="teal"
             />
             <SummaryCard
-              label="Avg Time in New"
-              value={formatDuration(t[`avg${pre}TimeInNew`])}
-              subtitle={`Median: ${formatDuration(t[`med${pre}TimeInNew`])}`}
+              label={`${label} Time in New`}
+              value={formatDuration(t[`${am}${biz}TimeInNew`])}
               color="blue"
             />
             <SummaryCard
-              label="Avg Time in Open"
-              value={formatDuration(t[`avg${pre}TimeInOpen`])}
-              subtitle={`Median: ${formatDuration(t[`med${pre}TimeInOpen`])}`}
+              label={`${label} Time in Open`}
+              value={formatDuration(t[`${am}${biz}TimeInOpen`])}
               color="red"
             />
             <SummaryCard
-              label="Avg Time in Pending"
-              value={formatDuration(t[`avg${pre}TimeInPending`])}
-              subtitle={`Median: ${formatDuration(t[`med${pre}TimeInPending`])}`}
+              label={`${label} Time in Pending`}
+              value={formatDuration(t[`${am}${biz}TimeInPending`])}
               color="yellow"
             />
             <SummaryCard
-              label="Avg Flapping"
-              value={t.avgFlapping.toFixed(1)}
-              subtitle={`Median: ${t.medFlapping} | ${t.totalFlapping} total across ${data.ticketCount} tickets`}
+              label={`${label} Flapping`}
+              value={useMedian ? t.medFlapping : t.avgFlapping.toFixed(1)}
+              subtitle={`${t.totalFlapping} total across ${data.ticketCount} tickets`}
               color="purple"
             />
           </div>
@@ -195,6 +211,7 @@ export default function Dashboard() {
             assignees={data.assignees}
             formatDuration={formatDuration}
             useBizHours={useBizHours}
+            useMedian={useMedian}
           />
         </>
       )}

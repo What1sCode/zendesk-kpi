@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import StatusBadge from './StatusBadge';
 
-export default function MetricsTable({ assignees, formatDuration, useBizHours }) {
+export default function MetricsTable({ assignees, formatDuration, useBizHours, useMedian }) {
   const [expandedUser, setExpandedUser] = useState(null);
   const [sortField, setSortField] = useState('ticketCount');
   const [sortDir, setSortDir] = useState('desc');
 
-  const pre = useBizHours ? 'Biz' : '';
+  const biz = useBizHours ? 'Biz' : '';
+  const am = useMedian ? 'med' : 'avg';
 
   function handleSort(field) {
     if (sortField === field) {
@@ -46,18 +47,12 @@ export default function MetricsTable({ assignees, formatDuration, useBizHours })
             </th>
             <SortHeader field="ticketCount">Tickets</SortHeader>
             <SortHeader field="pickupCount">Pickups</SortHeader>
-            <SortHeader field="avgPickupTime">Avg Pickup</SortHeader>
-            <SortHeader field="medPickupTime">Med Pickup</SortHeader>
-            <SortHeader field={`avg${useBizHours ? 'Biz' : ''}TimeToClose`}>Avg Close</SortHeader>
-            <SortHeader field={`med${useBizHours ? 'Biz' : ''}TimeToClose`}>Med Close</SortHeader>
-            <SortHeader field={`avg${pre}TimeInNew`}>Avg New</SortHeader>
-            <SortHeader field={`med${pre}TimeInNew`}>Med New</SortHeader>
-            <SortHeader field={`avg${pre}TimeInOpen`}>Avg Open</SortHeader>
-            <SortHeader field={`med${pre}TimeInOpen`}>Med Open</SortHeader>
-            <SortHeader field={`avg${pre}TimeInPending`}>Avg Pending</SortHeader>
-            <SortHeader field={`med${pre}TimeInPending`}>Med Pending</SortHeader>
-            <SortHeader field="avgFlapping">Avg Flap</SortHeader>
-            <SortHeader field="medFlapping">Med Flap</SortHeader>
+            <SortHeader field={`${am}PickupTime`}>Pickup</SortHeader>
+            <SortHeader field={`${am}${biz}TimeToClose`}>Close</SortHeader>
+            <SortHeader field={`${am}${biz}TimeInNew`}>New</SortHeader>
+            <SortHeader field={`${am}${biz}TimeInOpen`}>Open</SortHeader>
+            <SortHeader field={`${am}${biz}TimeInPending`}>Pending</SortHeader>
+            <SortHeader field={`${am}Flapping`}>Flapping</SortHeader>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200">
@@ -65,13 +60,15 @@ export default function MetricsTable({ assignees, formatDuration, useBizHours })
             <UserRow
               key={agg.assigneeId}
               agg={agg}
-              pre={pre}
+              biz={biz}
+              am={am}
               expanded={expandedUser === agg.assigneeId}
               onToggle={() =>
                 setExpandedUser(expandedUser === agg.assigneeId ? null : agg.assigneeId)
               }
               formatDuration={formatDuration}
               useBizHours={useBizHours}
+              useMedian={useMedian}
             />
           ))}
         </tbody>
@@ -80,7 +77,7 @@ export default function MetricsTable({ assignees, formatDuration, useBizHours })
   );
 }
 
-function UserRow({ agg, pre, expanded, onToggle, formatDuration, useBizHours }) {
+function UserRow({ agg, biz, am, expanded, onToggle, formatDuration, useBizHours, useMedian }) {
   return (
     <>
       <tr
@@ -96,46 +93,28 @@ function UserRow({ agg, pre, expanded, onToggle, formatDuration, useBizHours }) 
         <td className="px-4 py-3 text-sm text-gray-700">{agg.ticketCount}</td>
         <td className="px-4 py-3 text-sm text-gray-700">{agg.pickupCount}</td>
         <td className="px-4 py-3 text-sm text-green-700 font-mono">
-          {formatDuration(agg.avgPickupTime)}
-        </td>
-        <td className="px-4 py-3 text-sm text-green-500 font-mono">
-          {formatDuration(agg.medPickupTime)}
+          {formatDuration(agg[`${am}PickupTime`])}
         </td>
         <td className="px-4 py-3 text-sm text-teal-700 font-mono">
-          {formatDuration(useBizHours ? agg.avgBizTimeToClose : agg.avgTimeToClose)}
-        </td>
-        <td className="px-4 py-3 text-sm text-teal-500 font-mono">
-          {formatDuration(useBizHours ? agg.medBizTimeToClose : agg.medTimeToClose)}
+          {formatDuration(agg[`${am}${biz}TimeToClose`])}
         </td>
         <td className="px-4 py-3 text-sm text-blue-700 font-mono">
-          {formatDuration(agg[`avg${pre}TimeInNew`])}
-        </td>
-        <td className="px-4 py-3 text-sm text-blue-500 font-mono">
-          {formatDuration(agg[`med${pre}TimeInNew`])}
+          {formatDuration(agg[`${am}${biz}TimeInNew`])}
         </td>
         <td className="px-4 py-3 text-sm text-red-700 font-mono">
-          {formatDuration(agg[`avg${pre}TimeInOpen`])}
-        </td>
-        <td className="px-4 py-3 text-sm text-red-500 font-mono">
-          {formatDuration(agg[`med${pre}TimeInOpen`])}
+          {formatDuration(agg[`${am}${biz}TimeInOpen`])}
         </td>
         <td className="px-4 py-3 text-sm text-yellow-700 font-mono">
-          {formatDuration(agg[`avg${pre}TimeInPending`])}
-        </td>
-        <td className="px-4 py-3 text-sm text-yellow-500 font-mono">
-          {formatDuration(agg[`med${pre}TimeInPending`])}
+          {formatDuration(agg[`${am}${biz}TimeInPending`])}
         </td>
         <td className="px-4 py-3 text-sm text-purple-700 font-mono">
-          {agg.avgFlapping.toFixed(1)}
-        </td>
-        <td className="px-4 py-3 text-sm text-purple-500 font-mono">
-          {agg.medFlapping}
+          {useMedian ? agg.medFlapping : agg.avgFlapping.toFixed(1)}
         </td>
       </tr>
 
       {expanded && (
         <tr>
-          <td colSpan={15} className="px-0 py-0">
+          <td colSpan={9} className="px-0 py-0">
             <TicketDrillDown
               tickets={agg.tickets}
               formatDuration={formatDuration}
@@ -161,9 +140,9 @@ function TicketDrillDown({ tickets, formatDuration, useBizHours }) {
             <th className="px-4 py-2 text-left">Status</th>
             <th className="px-4 py-2 text-left">Pickup</th>
             <th className="px-4 py-2 text-left">Time to Close</th>
-            <th className="px-4 py-2 text-left">Time in New</th>
-            <th className="px-4 py-2 text-left">Time in Open</th>
-            <th className="px-4 py-2 text-left">Time in Pending</th>
+            <th className="px-4 py-2 text-left">New</th>
+            <th className="px-4 py-2 text-left">Open</th>
+            <th className="px-4 py-2 text-left">Pending</th>
             <th className="px-4 py-2 text-left">Flapping</th>
           </tr>
         </thead>
