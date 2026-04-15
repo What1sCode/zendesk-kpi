@@ -47,9 +47,11 @@ app.get('/api/metrics/stream', async (req, res) => {
   };
 
   try {
-    // Step 1: Search tickets
+    // Step 1: Search tickets (chunked by week to avoid Zendesk 1000-result limit)
     send({ type: 'status', message: 'Searching tickets...' });
-    const tickets = await searchTickets(group_id, start, end);
+    const tickets = await searchTickets(group_id, start, end, (msg) => {
+      send({ type: 'status', message: msg });
+    });
     send({ type: 'status', message: `Found ${tickets.length} tickets. Fetching audits...` });
 
     if (tickets.length === 0) {

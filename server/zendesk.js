@@ -53,22 +53,60 @@ export async function getGroupMembers(groupId) {
   return users;
 }
 
-export async function searchTickets(groupId, startDate, endDate) {
-  const query = `type:ticket group:${groupId} created>=${startDate} created<=${endDate}`;
-  let tickets = [];
-  let page = 1;
-  let hasMore = true;
+export async function searchTickets(groupId, startDate, endDate, onChunkStatus) {
+  // Break date range into weekly chunks to stay under Zendesk's 1000-result search limit
+  const chunks = buildWeeklyChunks(startDate, endDate);
+  let allTickets = [];
+  const seenIds = new Set();
 
-  while (hasMore) {
-    const data = await request(
-      `/search.json?query=${encodeURIComponent(query)}&page=${page}&per_page=100&sort_by=created_at&sort_order=asc`
-    );
-    tickets = tickets.concat(data.results);
-    hasMore = data.results.length === 100 && tickets.length < data.count;
-    page++;
+  for (let i = 0; i < chunks.length; i++) {
+    const { start, end } = chunks[i];
+    if (onChunkStatus) {
+      onChunkStatus(`Searching tickets (week ${i + 1}/${chunks.length}: ${start} to ${end})...`);
+    }
+
+    const query = `type:ticket group:${groupId} created>=${start} created<=${end}`;
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const data = await request(
+        `/search.json?query=${encodeURIComponent(query)}&page=${page}&per_page=100&sort_by=created_at&sort_order=asc`
+      );
+      for (const ticket of data.results) {
+        if (!seenIds.has(ticket.id)) {
+          seenIds.add(ticket.id);
+          allTickets.push(ticket);
+        }
+      }
+      hasMore = data.results.length === 100 && page * 100 < data.count;
+      page++;
+    }
   }
 
-  return tickets;
+  return allTickets;
+}
+
+function buildWeeklyChunks(startDate, endDate) {
+  const chunks = [];
+  let current = new Date(startDate);
+  const end = new Date(endDate);
+
+  while (current <= end) {
+    const chunkEnd = new Date(current);
+    chunkEnd.setDate(chunkEnd.getDate() + 6);
+    const actualEnd = chunkEnd > end ? end : chunkEnd;
+
+    chunks.push({
+      start: current.toISOString().split('T')[0],
+      end: actualEnd.toISOString().split('T')[0],
+    });
+
+    current = new Date(actualEnd);
+    current.setDate(current.getDate() + 1);
+  }
+
+  return chunks;
 }
 
 export async function getTicketAudits(ticketId) {
