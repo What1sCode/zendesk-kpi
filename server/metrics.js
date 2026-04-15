@@ -137,6 +137,25 @@ export function calculateTicketMetrics(ticket, audits) {
   // Count flapping = total number of status transitions
   const flapping = statusChanges.length;
 
+  // Pickup time: time from creation to first status change out of "new"
+  // Attributed to the agent (author_id) who made that change
+  let pickupTime = null;
+  let bizPickupTime = null;
+  let pickedUpBy = null;
+  const firstPickup = statusChanges.find((sc) => sc.from === 'new');
+  if (firstPickup) {
+    const created = new Date(ticket.created_at);
+    const picked = new Date(firstPickup.timestamp);
+    pickupTime = (picked - created) / 1000;
+    bizPickupTime = businessSeconds(created, picked);
+    // Find the author of this audit
+    const pickupAudit = audits.find((a) => a.created_at === firstPickup.timestamp &&
+      a.events.some((e) => e.type === 'Change' && e.field_name === 'status' && e.previous_value === 'new'));
+    if (pickupAudit) {
+      pickedUpBy = pickupAudit.author_id;
+    }
+  }
+
   return {
     ticketId: ticket.id,
     subject: ticket.subject,
@@ -151,6 +170,9 @@ export function calculateTicketMetrics(ticket, audits) {
     bizTimeInOpen: bizDurations.open,
     bizTimeInPending: bizDurations.pending,
     flapping,
+    pickupTime,
+    bizPickupTime,
+    pickedUpBy,
   };
 }
 
@@ -165,6 +187,8 @@ export function aggregateByAssignee(ticketMetrics, usersMap) {
         assigneeId: id,
         assigneeName: user ? user.name : id === 0 ? 'Unassigned' : `User ${id}`,
         tickets: [],
+        pickupTimes: [],
+        bizPickupTimes: [],
         totalTimeInNew: 0,
         totalTimeInOpen: 0,
         totalTimeInPending: 0,
@@ -185,9 +209,23 @@ export function aggregateByAssignee(ticketMetrics, usersMap) {
     agg.totalFlapping += tm.flapping;
   }
 
+  // Build pickup stats per agent (by who picked it up, not current assignee)
+  const pickupByAgent = {};
+  for (const tm of ticketMetrics) {
+    if (tm.pickedUpBy != null && tm.pickupTime != null) {
+      if (!pickupByAgent[tm.pickedUpBy]) {
+        pickupByAgent[tm.pickedUpBy] = { times: [], bizTimes: [] };
+      }
+      pickupByAgent[tm.pickedUpBy].times.push(tm.pickupTime);
+      pickupByAgent[tm.pickedUpBy].bizTimes.push(tm.bizPickupTime);
+    }
+  }
+
   // Calculate averages and medians
   return Object.values(byAssignee).map((agg) => {
     const n = agg.tickets.length;
+    const pickup = pickupByAgent[agg.assigneeId] || { times: [], bizTimes: [] };
+    const pn = pickup.times.length;
     return {
       ...agg,
       ticketCount: n,
@@ -205,6 +243,11 @@ export function aggregateByAssignee(ticketMetrics, usersMap) {
       medBizTimeInNew: median(agg.tickets.map((t) => t.bizTimeInNew)),
       medBizTimeInOpen: median(agg.tickets.map((t) => t.bizTimeInOpen)),
       medBizTimeInPending: median(agg.tickets.map((t) => t.bizTimeInPending)),
+      pickupCount: pn,
+      avgPickupTime: pn ? pickup.times.reduce((s, v) => s + v, 0) / pn : null,
+      medPickupTime: pn ? median(pickup.times) : null,
+      avgBizPickupTime: pn ? pickup.bizTimes.reduce((s, v) => s + v, 0) / pn : null,
+      medBizPickupTime: pn ? median(pickup.bizTimes) : null,
     };
   });
 }

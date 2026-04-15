@@ -124,6 +124,10 @@ app.get('/api/metrics/stream', async (req, res) => {
       medBizTimeInNew: median(ticketMetrics.map((t) => t.bizTimeInNew)),
       medBizTimeInOpen: median(ticketMetrics.map((t) => t.bizTimeInOpen)),
       medBizTimeInPending: median(ticketMetrics.map((t) => t.bizTimeInPending)),
+      avgPickupTime: (() => { const p = ticketMetrics.filter((t) => t.pickupTime != null); return p.length ? p.reduce((s, t) => s + t.pickupTime, 0) / p.length : null; })(),
+      medPickupTime: (() => { const p = ticketMetrics.filter((t) => t.pickupTime != null).map((t) => t.pickupTime); return p.length ? median(p) : null; })(),
+      avgBizPickupTime: (() => { const p = ticketMetrics.filter((t) => t.bizPickupTime != null); return p.length ? p.reduce((s, t) => s + t.bizPickupTime, 0) / p.length : null; })(),
+      medBizPickupTime: (() => { const p = ticketMetrics.filter((t) => t.bizPickupTime != null).map((t) => t.bizPickupTime); return p.length ? median(p) : null; })(),
     };
 
     send({

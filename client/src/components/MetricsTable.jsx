@@ -45,6 +45,9 @@ export default function MetricsTable({ assignees, formatDuration, useBizHours })
               Assignee
             </th>
             <SortHeader field="ticketCount">Tickets</SortHeader>
+            <SortHeader field="pickupCount">Pickups</SortHeader>
+            <SortHeader field={`avg${useBizHours ? 'Biz' : ''}PickupTime`}>Avg Pickup</SortHeader>
+            <SortHeader field={`med${useBizHours ? 'Biz' : ''}PickupTime`}>Med Pickup</SortHeader>
             <SortHeader field={`avg${pre}TimeInNew`}>Avg New</SortHeader>
             <SortHeader field={`med${pre}TimeInNew`}>Med New</SortHeader>
             <SortHeader field={`avg${pre}TimeInOpen`}>Avg Open</SortHeader>
@@ -89,6 +92,13 @@ function UserRow({ agg, pre, expanded, onToggle, formatDuration, useBizHours }) 
           </span>
         </td>
         <td className="px-4 py-3 text-sm text-gray-700">{agg.ticketCount}</td>
+        <td className="px-4 py-3 text-sm text-gray-700">{agg.pickupCount}</td>
+        <td className="px-4 py-3 text-sm text-green-700 font-mono">
+          {formatDuration(useBizHours ? agg.avgBizPickupTime : agg.avgPickupTime)}
+        </td>
+        <td className="px-4 py-3 text-sm text-green-500 font-mono">
+          {formatDuration(useBizHours ? agg.medBizPickupTime : agg.medPickupTime)}
+        </td>
         <td className="px-4 py-3 text-sm text-blue-700 font-mono">
           {formatDuration(agg[`avg${pre}TimeInNew`])}
         </td>
@@ -117,7 +127,7 @@ function UserRow({ agg, pre, expanded, onToggle, formatDuration, useBizHours }) 
 
       {expanded && (
         <tr>
-          <td colSpan={10} className="px-0 py-0">
+          <td colSpan={13} className="px-0 py-0">
             <TicketDrillDown
               tickets={agg.tickets}
               formatDuration={formatDuration}
@@ -141,6 +151,7 @@ function TicketDrillDown({ tickets, formatDuration, useBizHours }) {
             <th className="px-6 py-2 text-left">Ticket</th>
             <th className="px-4 py-2 text-left">Subject</th>
             <th className="px-4 py-2 text-left">Status</th>
+            <th className="px-4 py-2 text-left">Pickup</th>
             <th className="px-4 py-2 text-left">Time in New</th>
             <th className="px-4 py-2 text-left">Time in Open</th>
             <th className="px-4 py-2 text-left">Time in Pending</th>
@@ -163,6 +174,11 @@ function TicketDrillDown({ tickets, formatDuration, useBizHours }) {
               <td className="px-4 py-2 text-gray-700 max-w-xs truncate">{t.subject}</td>
               <td className="px-4 py-2">
                 <StatusBadge status={t.status} />
+              </td>
+              <td className="px-4 py-2 text-green-700 font-mono">
+                {t.pickupTime != null
+                  ? formatDuration(useBizHours ? t.bizPickupTime : t.pickupTime)
+                  : '—'}
               </td>
               <td className="px-4 py-2 text-blue-700 font-mono">
                 {formatDuration(useBizHours ? t.bizTimeInNew : t.timeInNew)}

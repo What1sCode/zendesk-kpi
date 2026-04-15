@@ -152,7 +152,13 @@ export default function Dashboard() {
           </div>
 
           {/* Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <SummaryCard
+              label="Avg Pickup Time"
+              value={formatDuration(useBizHours ? t.avgBizPickupTime : t.avgPickupTime)}
+              subtitle={`Median: ${formatDuration(useBizHours ? t.medBizPickupTime : t.medPickupTime)}`}
+              color="green"
+            />
             <SummaryCard
               label="Avg Time in New"
               value={formatDuration(t[`avg${pre}TimeInNew`])}
@@ -192,6 +198,7 @@ export default function Dashboard() {
 
 function SummaryCard({ label, value, subtitle, color }) {
   const colorMap = {
+    green: 'border-green-400 bg-green-50',
     blue: 'border-blue-400 bg-blue-50',
     red: 'border-red-400 bg-red-50',
     yellow: 'border-yellow-400 bg-yellow-50',
