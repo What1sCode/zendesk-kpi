@@ -44,9 +44,13 @@ export default function MetricsTable({ assignees, formatDuration }) {
             </th>
             <SortHeader field="ticketCount">Tickets</SortHeader>
             <SortHeader field="avgTimeInNew">Avg New</SortHeader>
+            <SortHeader field="medTimeInNew">Med New</SortHeader>
             <SortHeader field="avgTimeInOpen">Avg Open</SortHeader>
+            <SortHeader field="medTimeInOpen">Med Open</SortHeader>
             <SortHeader field="avgTimeInPending">Avg Pending</SortHeader>
-            <SortHeader field="avgFlapping">Avg Flapping</SortHeader>
+            <SortHeader field="medTimeInPending">Med Pending</SortHeader>
+            <SortHeader field="avgFlapping">Avg Flap</SortHeader>
+            <SortHeader field="medFlapping">Med Flap</SortHeader>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200">
@@ -84,20 +88,32 @@ function UserRow({ agg, expanded, onToggle, formatDuration }) {
         <td className="px-4 py-3 text-sm text-blue-700 font-mono">
           {formatDuration(agg.avgTimeInNew)}
         </td>
+        <td className="px-4 py-3 text-sm text-blue-500 font-mono">
+          {formatDuration(agg.medTimeInNew)}
+        </td>
         <td className="px-4 py-3 text-sm text-red-700 font-mono">
           {formatDuration(agg.avgTimeInOpen)}
+        </td>
+        <td className="px-4 py-3 text-sm text-red-500 font-mono">
+          {formatDuration(agg.medTimeInOpen)}
         </td>
         <td className="px-4 py-3 text-sm text-yellow-700 font-mono">
           {formatDuration(agg.avgTimeInPending)}
         </td>
+        <td className="px-4 py-3 text-sm text-yellow-500 font-mono">
+          {formatDuration(agg.medTimeInPending)}
+        </td>
         <td className="px-4 py-3 text-sm text-purple-700 font-mono">
           {agg.avgFlapping.toFixed(1)}
+        </td>
+        <td className="px-4 py-3 text-sm text-purple-500 font-mono">
+          {agg.medFlapping}
         </td>
       </tr>
 
       {expanded && (
         <tr>
-          <td colSpan={6} className="px-0 py-0">
+          <td colSpan={10} className="px-0 py-0">
             <TicketDrillDown tickets={agg.tickets} formatDuration={formatDuration} />
           </td>
         </tr>

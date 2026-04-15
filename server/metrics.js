@@ -78,7 +78,7 @@ export function aggregateByAssignee(ticketMetrics, usersMap) {
     agg.totalFlapping += tm.flapping;
   }
 
-  // Calculate averages
+  // Calculate averages and medians
   return Object.values(byAssignee).map((agg) => ({
     ...agg,
     ticketCount: agg.tickets.length,
@@ -86,8 +86,21 @@ export function aggregateByAssignee(ticketMetrics, usersMap) {
     avgTimeInOpen: agg.tickets.length ? agg.totalTimeInOpen / agg.tickets.length : 0,
     avgTimeInPending: agg.tickets.length ? agg.totalTimeInPending / agg.tickets.length : 0,
     avgFlapping: agg.tickets.length ? agg.totalFlapping / agg.tickets.length : 0,
+    medTimeInNew: median(agg.tickets.map((t) => t.timeInNew)),
+    medTimeInOpen: median(agg.tickets.map((t) => t.timeInOpen)),
+    medTimeInPending: median(agg.tickets.map((t) => t.timeInPending)),
+    medFlapping: median(agg.tickets.map((t) => t.flapping)),
   }));
 }
+
+function median(values) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+export { median };
 
 export function formatDuration(seconds) {
   const days = Math.floor(seconds / 86400);

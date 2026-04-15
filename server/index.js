@@ -3,7 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getGroups, getGroupMembers, searchTickets, getTicketAudits } from './zendesk.js';
-import { calculateTicketMetrics, aggregateByAssignee } from './metrics.js';
+import { calculateTicketMetrics, aggregateByAssignee, median } from './metrics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -103,6 +103,10 @@ app.get('/api/metrics/stream', async (req, res) => {
       avgTimeInPending: totalTickets ? ticketMetrics.reduce((s, t) => s + t.timeInPending, 0) / totalTickets : 0,
       avgFlapping: totalTickets ? ticketMetrics.reduce((s, t) => s + t.flapping, 0) / totalTickets : 0,
       totalFlapping: ticketMetrics.reduce((s, t) => s + t.flapping, 0),
+      medTimeInNew: median(ticketMetrics.map((t) => t.timeInNew)),
+      medTimeInOpen: median(ticketMetrics.map((t) => t.timeInOpen)),
+      medTimeInPending: median(ticketMetrics.map((t) => t.timeInPending)),
+      medFlapping: median(ticketMetrics.map((t) => t.flapping)),
     };
 
     send({

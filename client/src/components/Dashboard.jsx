@@ -129,22 +129,25 @@ export default function Dashboard() {
             <SummaryCard
               label="Avg Time in New"
               value={formatDuration(data.totals.avgTimeInNew)}
+              subtitle={`Median: ${formatDuration(data.totals.medTimeInNew)}`}
               color="blue"
             />
             <SummaryCard
               label="Avg Time in Open"
               value={formatDuration(data.totals.avgTimeInOpen)}
+              subtitle={`Median: ${formatDuration(data.totals.medTimeInOpen)}`}
               color="red"
             />
             <SummaryCard
               label="Avg Time in Pending"
               value={formatDuration(data.totals.avgTimeInPending)}
+              subtitle={`Median: ${formatDuration(data.totals.medTimeInPending)}`}
               color="yellow"
             />
             <SummaryCard
               label="Avg Flapping"
               value={data.totals.avgFlapping.toFixed(1)}
-              subtitle={`${data.totals.totalFlapping} total across ${data.ticketCount} tickets`}
+              subtitle={`Median: ${data.totals.medFlapping} | ${data.totals.totalFlapping} total across ${data.ticketCount} tickets`}
               color="purple"
             />
           </div>
