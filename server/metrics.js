@@ -156,6 +156,20 @@ export function calculateTicketMetrics(ticket, audits) {
     }
   }
 
+  // Time to close: from first pickup out of "new" to first "solved"
+  // Calendar and business hours versions
+  let timeToClose = null;
+  let bizTimeToClose = null;
+  if (firstPickup) {
+    const pickupTs = new Date(firstPickup.timestamp);
+    const firstSolved = statusChanges.find((sc) => sc.to === 'solved');
+    if (firstSolved) {
+      const solvedTs = new Date(firstSolved.timestamp);
+      timeToClose = (solvedTs - pickupTs) / 1000;
+      bizTimeToClose = businessSeconds(pickupTs, solvedTs);
+    }
+  }
+
   return {
     ticketId: ticket.id,
     subject: ticket.subject,
@@ -172,6 +186,8 @@ export function calculateTicketMetrics(ticket, audits) {
     flapping,
     pickupTime,
     pickedUpBy,
+    timeToClose,
+    bizTimeToClose,
   };
 }
 
@@ -245,6 +261,18 @@ export function aggregateByAssignee(ticketMetrics, usersMap) {
       pickupCount: pn,
       avgPickupTime: pn ? pickup.times.reduce((s, v) => s + v, 0) / pn : null,
       medPickupTime: pn ? median(pickup.times) : null,
+      // Time to close: pickup → solved, per current assignee
+      ...(() => {
+        const closed = agg.tickets.filter((t) => t.timeToClose != null);
+        const cn = closed.length;
+        return {
+          closedCount: cn,
+          avgTimeToClose: cn ? closed.reduce((s, t) => s + t.timeToClose, 0) / cn : null,
+          medTimeToClose: cn ? median(closed.map((t) => t.timeToClose)) : null,
+          avgBizTimeToClose: cn ? closed.reduce((s, t) => s + t.bizTimeToClose, 0) / cn : null,
+          medBizTimeToClose: cn ? median(closed.map((t) => t.bizTimeToClose)) : null,
+        };
+      })(),
     };
   });
 }
