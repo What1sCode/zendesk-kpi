@@ -46,8 +46,8 @@ export default function MetricsTable({ assignees, formatDuration, useBizHours })
             </th>
             <SortHeader field="ticketCount">Tickets</SortHeader>
             <SortHeader field="pickupCount">Pickups</SortHeader>
-            <SortHeader field={`avg${useBizHours ? 'Biz' : ''}PickupTime`}>Avg Pickup</SortHeader>
-            <SortHeader field={`med${useBizHours ? 'Biz' : ''}PickupTime`}>Med Pickup</SortHeader>
+            <SortHeader field="avgPickupTime">Avg Pickup</SortHeader>
+            <SortHeader field="medPickupTime">Med Pickup</SortHeader>
             <SortHeader field={`avg${pre}TimeInNew`}>Avg New</SortHeader>
             <SortHeader field={`med${pre}TimeInNew`}>Med New</SortHeader>
             <SortHeader field={`avg${pre}TimeInOpen`}>Avg Open</SortHeader>
@@ -94,10 +94,10 @@ function UserRow({ agg, pre, expanded, onToggle, formatDuration, useBizHours }) 
         <td className="px-4 py-3 text-sm text-gray-700">{agg.ticketCount}</td>
         <td className="px-4 py-3 text-sm text-gray-700">{agg.pickupCount}</td>
         <td className="px-4 py-3 text-sm text-green-700 font-mono">
-          {formatDuration(useBizHours ? agg.avgBizPickupTime : agg.avgPickupTime)}
+          {formatDuration(agg.avgPickupTime)}
         </td>
         <td className="px-4 py-3 text-sm text-green-500 font-mono">
-          {formatDuration(useBizHours ? agg.medBizPickupTime : agg.medPickupTime)}
+          {formatDuration(agg.medPickupTime)}
         </td>
         <td className="px-4 py-3 text-sm text-blue-700 font-mono">
           {formatDuration(agg[`avg${pre}TimeInNew`])}
@@ -176,9 +176,7 @@ function TicketDrillDown({ tickets, formatDuration, useBizHours }) {
                 <StatusBadge status={t.status} />
               </td>
               <td className="px-4 py-2 text-green-700 font-mono">
-                {t.pickupTime != null
-                  ? formatDuration(useBizHours ? t.bizPickupTime : t.pickupTime)
-                  : '—'}
+                {t.pickupTime != null ? formatDuration(t.pickupTime) : '—'}
               </td>
               <td className="px-4 py-2 text-blue-700 font-mono">
                 {formatDuration(useBizHours ? t.bizTimeInNew : t.timeInNew)}

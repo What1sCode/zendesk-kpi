@@ -155,8 +155,8 @@ export default function Dashboard() {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <SummaryCard
               label="Avg Pickup Time"
-              value={formatDuration(useBizHours ? t.avgBizPickupTime : t.avgPickupTime)}
-              subtitle={`Median: ${formatDuration(useBizHours ? t.medBizPickupTime : t.medPickupTime)}`}
+              value={formatDuration(t.avgPickupTime)}
+              subtitle={`Median: ${formatDuration(t.medPickupTime)} (biz hours only)`}
               color="green"
             />
             <SummaryCard
