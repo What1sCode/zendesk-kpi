@@ -48,7 +48,7 @@ export function calculateProductivityMetrics(ticket, audits) {
   }
 
   const isSolved = ticket.status === 'solved' || ticket.status === 'closed';
-  const oneTouch = isSolved && agentReplies === 1;
+  const oneTouch = isSolved && agentReplies <= 1;
 
   const created = new Date(ticket.created_at);
   const firstReplyBizSeconds = firstReplyTs ? businessSeconds(created, firstReplyTs) : null;
