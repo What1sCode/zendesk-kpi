@@ -2,7 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import { findUserByEmail, findUserByVerificationToken, createUser, verifyUser } from './users.js';
+import { findUserByEmail, findUserById, findUserByVerificationToken, createUser, verifyUser } from './users.js';
 import { sendVerificationEmail } from './email.js';
 
 const router = Router();
@@ -20,12 +20,20 @@ const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ALLOWED_DOMAIN = 'elotouch.com';
 
-export function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   const token = req.cookies?.[COOKIE_NAME];
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    // Verify user still exists and is verified in the database
+    const user = await findUserById(decoded.id);
+    if (!user || !user.verified) {
+      res.clearCookie(COOKIE_NAME);
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
     req.user = decoded;
     next();
   } catch {
