@@ -91,24 +91,46 @@ router.post('/signup', async (req, res) => {
   });
 });
 
+// GET — show confirmation page only, do NOT verify yet (prevents email scanner auto-verification)
 router.get('/verify', async (req, res) => {
   const { token } = req.query;
 
   if (!token) {
-    return res.status(400).send(verifyPage('Invalid verification link.', false));
+    return res.status(400).send(verifyConfirmPage(null, 'Invalid verification link.', false));
   }
 
   const user = await findUserByVerificationToken(token);
   if (!user) {
-    return res.status(400).send(verifyPage('This verification link is invalid or has expired. Please sign up again.', false));
+    return res.status(400).send(verifyConfirmPage(null, 'This verification link is invalid or has expired. Please sign up again.', false));
   }
 
   if (user.verified) {
-    return res.send(verifyPage('Your email is already verified. You can sign in.', true));
+    return res.send(verifyConfirmPage(null, 'Your email is already verified. You can sign in.', true));
+  }
+
+  // Show page with confirm button — actual verification happens on POST
+  res.send(verifyConfirmPage(token, null, null));
+});
+
+// POST — user clicked the confirm button, now actually verify
+router.post('/verify', async (req, res) => {
+  const { token } = req.body;
+
+  if (!token) {
+    return res.status(400).send(verifyConfirmPage(null, 'Invalid verification link.', false));
+  }
+
+  const user = await findUserByVerificationToken(token);
+  if (!user) {
+    return res.status(400).send(verifyConfirmPage(null, 'This verification link is invalid or has expired. Please sign up again.', false));
+  }
+
+  if (user.verified) {
+    return res.send(verifyConfirmPage(null, 'Your email is already verified. You can sign in.', true));
   }
 
   await verifyUser(user.id);
-  res.send(verifyPage('Email verified! Your account is now active. You can sign in.', true));
+  res.send(verifyConfirmPage(null, 'Email verified! Your account is now active. You can sign in.', true));
 });
 
 router.post('/login', async (req, res) => {
@@ -151,8 +173,40 @@ router.get('/me', requireAuth, (req, res) => {
   res.json({ email: req.user.email, name: req.user.name });
 });
 
-// Simple HTML page returned after clicking verification link
-function verifyPage(message, success) {
+// If token is provided: show confirm button (requires user click to POST)
+// If message is provided: show result message
+function verifyConfirmPage(token, message, success) {
+  const APP_URL = process.env.APP_URL || 'https://zendesk-kpi-production.up.railway.app';
+
+  if (token) {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify Email — Zendesk KPI Dashboard</title>
+  <style>
+    body { font-family: sans-serif; background: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+    .card { background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.1); padding: 40px; max-width: 420px; text-align: center; }
+    h2 { color: #1e293b; margin: 0 0 8px; }
+    p { color: #475569; margin: 0 0 24px; }
+    button { padding: 12px 32px; background: #2563eb; color: #fff; border: none; border-radius: 6px; font-size: 16px; font-weight: 600; cursor: pointer; }
+    button:hover { background: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Zendesk KPI Dashboard</h2>
+    <p>Click the button below to verify your email address and activate your account.</p>
+    <form method="POST" action="${APP_URL}/api/auth/verify">
+      <input type="hidden" name="token" value="${token}" />
+      <button type="submit">Confirm Email Address</button>
+    </form>
+  </div>
+</body>
+</html>`;
+  }
+
   const color = success ? '#16a34a' : '#dc2626';
   const icon = success ? '✓' : '✗';
   return `<!DOCTYPE html>
