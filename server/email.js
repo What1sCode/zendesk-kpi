@@ -4,6 +4,28 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.RESEND_FROM_EMAIL || 'noreply@elotouch.com';
 const APP_URL = process.env.APP_URL || 'https://zendesk-kpi-production.up.railway.app';
 
+export async function sendAdminSignupNotification(newUserEmail, newUserName) {
+  const adminEmail = process.env.ADMIN_NOTIFICATION_EMAIL;
+  if (!adminEmail) return;
+
+  await resend.emails.send({
+    from: FROM,
+    to: adminEmail,
+    subject: `New user signup: ${newUserName}`,
+    html: `
+      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+        <h2 style="color: #1e293b;">New KPI Dashboard Signup</h2>
+        <p style="color: #475569;">A new user has created an account and is pending email verification.</p>
+        <table style="color: #1e293b; margin-top: 16px;">
+          <tr><td style="padding: 4px 16px 4px 0; color: #64748b;">Name</td><td><strong>${newUserName}</strong></td></tr>
+          <tr><td style="padding: 4px 16px 4px 0; color: #64748b;">Email</td><td><strong>${newUserEmail}</strong></td></tr>
+          <tr><td style="padding: 4px 16px 4px 0; color: #64748b;">Time</td><td><strong>${new Date().toUTCString()}</strong></td></tr>
+        </table>
+      </div>
+    `,
+  });
+}
+
 export async function sendVerificationEmail(email, name, token) {
   const link = `${APP_URL}/api/auth/verify?token=${token}`;
 

@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { findUserByEmail, findUserById, findUserByVerificationToken, createUser, verifyUser } from './users.js';
-import { sendVerificationEmail } from './email.js';
+import { sendVerificationEmail, sendAdminSignupNotification } from './email.js';
 
 const router = Router();
 
@@ -83,7 +83,12 @@ router.post('/signup', async (req, res) => {
     await sendVerificationEmail(user.email, user.name, verificationToken);
   } catch (err) {
     console.error('Failed to send verification email:', err.message);
-    // Don't block account creation if email fails — log it and continue
+  }
+
+  try {
+    await sendAdminSignupNotification(user.email, user.name);
+  } catch (err) {
+    console.error('Failed to send admin notification:', err.message);
   }
 
   res.status(201).json({
