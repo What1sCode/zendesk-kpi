@@ -1,6 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import GroupSelector from './GroupSelector';
 import DateRangePicker from './DateRangePicker';
+import StatusBadge from './StatusBadge';
+
+const SUBDOMAIN = 'elotouchcare';
+
+const CHANNEL_LABEL = { phone: 'Phone', chat: 'Chat', email: 'Email', other: 'Other' };
+const CHANNEL_COLOR = {
+  phone: 'bg-blue-100 text-blue-700',
+  chat: 'bg-green-100 text-green-700',
+  email: 'bg-yellow-100 text-yellow-700',
+  other: 'bg-gray-100 text-gray-600',
+};
 
 function formatDuration(seconds) {
   if (seconds == null || isNaN(seconds)) return '—';
@@ -39,6 +50,7 @@ export default function AgentProductivity() {
   const [statusMessage, setStatusMessage] = useState('');
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [expandedAgent, setExpandedAgent] = useState(null);
   const eventSourceRef = useRef(null);
 
   useEffect(() => {
@@ -186,39 +198,115 @@ export default function AgentProductivity() {
                   <th className="text-right px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Reopens</th>
                 </tr>
               </thead>
-              <tbody>
-                {data.agents.map((agent, i) => (
-                  <tr
-                    key={agent.assigneeId}
-                    className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
-                  >
-                    <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">{agent.assigneeName}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{agent.phone}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{agent.chat}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{agent.email}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{agent.eloview}</td>
-                    <td className="px-4 py-3 text-right font-medium text-gray-900">{agent.totalTaken}</td>
-                    <td className={`px-4 py-3 text-right font-medium ${agent.unsolved > 0 ? 'text-red-600' : 'text-gray-700'}`}>
-                      {agent.unsolved}
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-700">{agent.solved}</td>
-                    <td className="px-4 py-3 text-right text-gray-700">{agent.agentReplies}</td>
-                    <td className={`px-4 py-3 text-right font-medium ${
-                      agent.oneTouchPct >= 80 ? 'text-green-600' :
-                      agent.oneTouchPct >= 60 ? 'text-yellow-600' : 'text-red-600'
-                    }`}>
-                      {agent.solved > 0 ? `${agent.oneTouchPct.toFixed(1)}%` : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-700 whitespace-nowrap">
-                      {formatDuration(agent.medFirstReplyBizSeconds)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-gray-700 whitespace-nowrap">
-                      {formatDuration(agent.medResolutionBizSeconds)}
-                    </td>
-                    <td className={`px-4 py-3 text-right font-medium ${agent.reopens > 0 ? 'text-orange-600' : 'text-gray-700'}`}>
-                      {agent.reopens}
-                    </td>
-                  </tr>
+              <tbody className="divide-y divide-gray-200">
+                {data.agents.map((agent) => (
+                  <>
+                    <tr
+                      key={agent.assigneeId}
+                      className="hover:bg-gray-50 cursor-pointer transition-colors"
+                      onClick={() => setExpandedAgent(expandedAgent === agent.assigneeId ? null : agent.assigneeId)}
+                    >
+                      <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">
+                        <span className="flex items-center gap-2">
+                          <span className="text-gray-400 text-xs">
+                            {expandedAgent === agent.assigneeId ? '▼' : '▶'}
+                          </span>
+                          {agent.assigneeName}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-700">{agent.phone}</td>
+                      <td className="px-4 py-3 text-right text-gray-700">{agent.chat}</td>
+                      <td className="px-4 py-3 text-right text-gray-700">{agent.email}</td>
+                      <td className="px-4 py-3 text-right text-gray-700">{agent.eloview}</td>
+                      <td className="px-4 py-3 text-right font-medium text-gray-900">{agent.totalTaken}</td>
+                      <td className={`px-4 py-3 text-right font-medium ${agent.unsolved > 0 ? 'text-red-600' : 'text-gray-700'}`}>
+                        {agent.unsolved}
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-700">{agent.solved}</td>
+                      <td className="px-4 py-3 text-right text-gray-700">{agent.agentReplies}</td>
+                      <td className={`px-4 py-3 text-right font-medium ${
+                        agent.oneTouchPct >= 80 ? 'text-green-600' :
+                        agent.oneTouchPct >= 60 ? 'text-yellow-600' : 'text-red-600'
+                      }`}>
+                        {agent.solved > 0 ? `${agent.oneTouchPct.toFixed(1)}%` : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-700 whitespace-nowrap">
+                        {formatDuration(agent.medFirstReplyBizSeconds)}
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-700 whitespace-nowrap">
+                        {formatDuration(agent.medResolutionBizSeconds)}
+                      </td>
+                      <td className={`px-4 py-3 text-right font-medium ${agent.reopens > 0 ? 'text-orange-600' : 'text-gray-700'}`}>
+                        {agent.reopens}
+                      </td>
+                    </tr>
+
+                    {expandedAgent === agent.assigneeId && (
+                      <tr key={`${agent.assigneeId}-drill`}>
+                        <td colSpan={13} className="px-0 py-0">
+                          <div className="bg-gray-50 border-t border-b border-gray-200">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="text-xs text-gray-500 uppercase bg-gray-100">
+                                  <th className="px-6 py-2 text-left">Ticket</th>
+                                  <th className="px-4 py-2 text-left">Subject</th>
+                                  <th className="px-4 py-2 text-left">Status</th>
+                                  <th className="px-4 py-2 text-left">Channel</th>
+                                  <th className="px-4 py-2 text-right">Replies</th>
+                                  <th className="px-4 py-2 text-center">One-touch</th>
+                                  <th className="px-4 py-2 text-right">First Reply</th>
+                                  <th className="px-4 py-2 text-right">Resolution</th>
+                                  <th className="px-4 py-2 text-right">Reopens</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {agent.tickets
+                                  .slice()
+                                  .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+                                  .map((t) => (
+                                  <tr key={t.ticketId} className="hover:bg-gray-100">
+                                    <td className="px-6 py-2">
+                                      <a
+                                        href={`https://${SUBDOMAIN}.zendesk.com/agent/tickets/${t.ticketId}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-600 hover:underline font-mono"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        #{t.ticketId}
+                                      </a>
+                                    </td>
+                                    <td className="px-4 py-2 text-gray-700 max-w-xs truncate">{t.subject}</td>
+                                    <td className="px-4 py-2"><StatusBadge status={t.status} /></td>
+                                    <td className="px-4 py-2">
+                                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${CHANNEL_COLOR[t.channel]}`}>
+                                        {t.isEloview ? 'Eloview' : CHANNEL_LABEL[t.channel]}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-2 text-right text-gray-700">{t.agentReplies}</td>
+                                    <td className="px-4 py-2 text-center">
+                                      {t.oneTouch
+                                        ? <span className="text-green-600 font-medium">✓</span>
+                                        : <span className="text-gray-300">—</span>}
+                                    </td>
+                                    <td className="px-4 py-2 text-right text-teal-700 font-mono whitespace-nowrap">
+                                      {formatDuration(t.firstReplyBizSeconds)}
+                                    </td>
+                                    <td className="px-4 py-2 text-right text-blue-700 font-mono whitespace-nowrap">
+                                      {formatDuration(t.resolutionBizSeconds)}
+                                    </td>
+                                    <td className={`px-4 py-2 text-right font-medium ${t.reopens > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
+                                      {t.reopens}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
               </tbody>
             </table>

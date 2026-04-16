@@ -56,6 +56,8 @@ export function calculateProductivityMetrics(ticket, audits) {
 
   return {
     ticketId: ticket.id,
+    subject: ticket.subject,
+    createdAt: ticket.created_at,
     assigneeId: ticket.assignee_id,
     status: ticket.status,
     channel: getChannel(ticket),
@@ -91,6 +93,7 @@ export function aggregateProductivityByAssignee(ticketMetrics, usersMap) {
         reopens: 0,
         firstReplyTimes: [],
         resolutionTimes: [],
+        tickets: [],
       };
     }
 
@@ -107,6 +110,7 @@ export function aggregateProductivityByAssignee(ticketMetrics, usersMap) {
     agg.reopens += tm.reopens;
     if (tm.firstReplyBizSeconds != null) agg.firstReplyTimes.push(tm.firstReplyBizSeconds);
     if (tm.resolutionBizSeconds != null) agg.resolutionTimes.push(tm.resolutionBizSeconds);
+    agg.tickets.push(tm);
   }
 
   return Object.values(byAssignee).map((agg) => ({
@@ -124,5 +128,6 @@ export function aggregateProductivityByAssignee(ticketMetrics, usersMap) {
     reopens: agg.reopens,
     medFirstReplyBizSeconds: agg.firstReplyTimes.length ? median(agg.firstReplyTimes) : null,
     medResolutionBizSeconds: agg.resolutionTimes.length ? median(agg.resolutionTimes) : null,
+    tickets: agg.tickets,
   }));
 }
