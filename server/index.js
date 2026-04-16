@@ -35,6 +35,7 @@ console.log('Environment variables: OK');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+app.set('trust proxy', 1);
 app.use(express.json());
 app.use(cookieParser());
 
