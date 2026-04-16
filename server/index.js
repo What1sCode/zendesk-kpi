@@ -4,6 +4,7 @@ import { rateLimit } from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import authRouter, { requireAuth } from './auth.js';
+import { initDb } from './db.js';
 import { getGroups, getGroupMembers, searchTickets, getTicketAudits } from './zendesk.js';
 import { calculateTicketMetrics, aggregateByAssignee, median } from './metrics.js';
 
@@ -20,6 +21,7 @@ const requiredEnvVars = [
   'ZENDESK_EMAIL',
   'ZENDESK_API_TOKEN',
   'JWT_SECRET',
+  'DATABASE_URL',
 ];
 const missingVars = requiredEnvVars.filter((v) => !process.env[v]);
 if (missingVars.length > 0) {
@@ -234,10 +236,17 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Health check: http://0.0.0.0:${PORT}/health`);
-});
+initDb()
+  .then(() => {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on port ${PORT}`);
+      console.log(`Health check: http://0.0.0.0:${PORT}/health`);
+    });
+  })
+  .catch((err) => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
+  });
 
 process.on('uncaughtException', (err) => {
   console.error('Uncaught exception:', err);
