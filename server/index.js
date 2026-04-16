@@ -7,6 +7,7 @@ import authRouter, { requireAuth } from './auth.js';
 import { initDb } from './db.js';
 import { getGroups, getGroupMembers, searchTickets, getTicketAudits } from './zendesk.js';
 import { calculateTicketMetrics, aggregateByAssignee, median } from './metrics.js';
+import { calculateProductivityMetrics, aggregateProductivityByAssignee } from './productivityMetrics.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -225,6 +226,122 @@ app.get('/api/metrics/stream', requireAuth, metricsLimiter, async (req, res) => 
     });
   } catch (err) {
     console.error('Error processing metrics stream:', err.message);
+    send({ type: 'error', message: 'Failed to generate report' });
+  }
+
+  clearTimeout(timeout);
+  res.end();
+});
+
+// Agent Productivity SSE stream
+app.get('/api/productivity/stream', requireAuth, metricsLimiter, async (req, res) => {
+  const { group_id, start, end } = req.query;
+
+  if (!group_id || !start || !end) {
+    return res.status(400).json({ error: 'group_id, start, and end are required' });
+  }
+  if (!/^\d+$/.test(group_id)) {
+    return res.status(400).json({ error: 'Invalid group_id' });
+  }
+  const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+  if (!dateRegex.test(start) || !dateRegex.test(end)) {
+    return res.status(400).json({ error: 'Invalid date format, use YYYY-MM-DD' });
+  }
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime()) || startDate > endDate) {
+    return res.status(400).json({ error: 'Invalid date range' });
+  }
+  if (endDate - startDate > 365 * 24 * 60 * 60 * 1000) {
+    return res.status(400).json({ error: 'Date range cannot exceed 1 year' });
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+
+  const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+  const timeout = setTimeout(() => {
+    send({ type: 'error', message: 'Request timed out' });
+    res.end();
+  }, 10 * 60 * 1000);
+
+  try {
+    send({ type: 'status', message: 'Searching tickets...' });
+    const tickets = await searchTickets(group_id, start, end, (msg) => {
+      send({ type: 'status', message: msg });
+    });
+
+    const EXCLUDED_SUBJECTS = [
+      'Customer signup notification',
+      'Customer cancelled subscription',
+      'Customer subscription expired',
+    ];
+    const filtered = tickets.filter(
+      (t) => !EXCLUDED_SUBJECTS.some((s) => t.subject === s)
+    );
+
+    send({
+      type: 'status',
+      message: `Found ${filtered.length} tickets. Fetching audits...`,
+    });
+
+    if (filtered.length === 0) {
+      send({ type: 'complete', data: { agents: [], totals: {} } });
+      clearTimeout(timeout);
+      res.end();
+      return;
+    }
+
+    const members = await getGroupMembers(group_id);
+    const usersMap = new Map(members.map((u) => [u.id, u]));
+
+    const CONCURRENCY = 10;
+    const ticketMetrics = [];
+    let completed = 0;
+
+    for (let i = 0; i < filtered.length; i += CONCURRENCY) {
+      const batch = filtered.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(
+        batch.map(async (ticket) => {
+          const audits = await getTicketAudits(ticket.id);
+          return calculateProductivityMetrics(ticket, audits);
+        })
+      );
+      ticketMetrics.push(...results);
+      completed += batch.length;
+      send({ type: 'progress', current: completed, total: filtered.length });
+    }
+
+    send({ type: 'status', message: 'Calculating metrics...' });
+    const agents = aggregateProductivityByAssignee(ticketMetrics, usersMap);
+
+    const solved = ticketMetrics.filter((t) => t.isSolved);
+    const oneTouchCount = ticketMetrics.filter((t) => t.oneTouch).length;
+    const allFirstReply = ticketMetrics.filter((t) => t.firstReplyBizSeconds != null).map((t) => t.firstReplyBizSeconds);
+    const allResolution = ticketMetrics.filter((t) => t.resolutionBizSeconds != null).map((t) => t.resolutionBizSeconds);
+
+    const totals = {
+      created: filtered.length,
+      solved: solved.length,
+      unsolved: filtered.length - solved.length,
+      oneTouchPct: solved.length > 0 ? (oneTouchCount / solved.length) * 100 : 0,
+      medFirstReplyBizSeconds: allFirstReply.length ? median(allFirstReply) : null,
+      medResolutionBizSeconds: allResolution.length ? median(allResolution) : null,
+    };
+
+    send({
+      type: 'complete',
+      data: {
+        agents: agents.sort((a, b) => b.totalTaken - a.totalTaken),
+        totals,
+      },
+    });
+  } catch (err) {
+    console.error('Error processing productivity stream:', err.message);
     send({ type: 'error', message: 'Failed to generate report' });
   }
 

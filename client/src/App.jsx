@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import Dashboard from './components/Dashboard';
+import AgentProductivity from './components/AgentProductivity';
 import AuthPage from './components/AuthPage';
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [checking, setChecking] = useState(true);
+  const [activeTab, setActiveTab] = useState('efficiency');
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -50,8 +52,31 @@ export default function App() {
           </button>
         </div>
       </header>
+      {/* Tab Navigation */}
+      <div className="bg-white border-b border-gray-200 px-6">
+        <nav className="flex gap-6">
+          {[
+            { id: 'efficiency', label: 'Efficiency' },
+            { id: 'productivity', label: 'Agent Productivity' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab.id
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
       <main className="max-w-7xl mx-auto px-4 py-6">
-        <Dashboard />
+        {activeTab === 'efficiency' && <Dashboard />}
+        {activeTab === 'productivity' && <AgentProductivity />}
       </main>
     </div>
   );

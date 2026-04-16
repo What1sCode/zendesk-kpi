@@ -48,7 +48,7 @@ function etToUtc(year, month, day, hour, minute = 0, second = 0) {
 
 // Calculate business seconds between two UTC Date objects
 // Uses a day-by-day approach to avoid cursor-jumping bugs
-function businessSeconds(startUtc, endUtc) {
+export function businessSeconds(startUtc, endUtc) {
   if (endUtc <= startUtc) return 0;
 
   let total = 0;
