@@ -109,6 +109,45 @@ function buildWeeklyChunks(startDate, endDate) {
   return chunks;
 }
 
+// Search tickets by assignee IDs — used for Agent Productivity so tickets
+// assigned to group members in other groups are not missed
+export async function searchTicketsByAssignees(userIds, startDate, endDate, onChunkStatus) {
+  const chunks = buildWeeklyChunks(startDate, endDate);
+  const allTickets = [];
+  const seenIds = new Set();
+  let chunkIndex = 0;
+  const totalChunks = chunks.length * userIds.length;
+
+  for (const userId of userIds) {
+    for (const { start, end } of chunks) {
+      chunkIndex++;
+      if (onChunkStatus) {
+        onChunkStatus(`Searching tickets for agents (${chunkIndex}/${totalChunks})...`);
+      }
+
+      const query = `type:ticket assignee:${userId} created>=${start} created<=${end}`;
+      let page = 1;
+      let hasMore = true;
+
+      while (hasMore) {
+        const data = await request(
+          `/search.json?query=${encodeURIComponent(query)}&page=${page}&per_page=100&sort_by=created_at&sort_order=asc`
+        );
+        for (const ticket of data.results) {
+          if (!seenIds.has(ticket.id)) {
+            seenIds.add(ticket.id);
+            allTickets.push(ticket);
+          }
+        }
+        hasMore = data.results.length === 100 && page * 100 < data.count;
+        page++;
+      }
+    }
+  }
+
+  return allTickets;
+}
+
 export async function getTicketAudits(ticketId) {
   let audits = [];
   let url = `/tickets/${ticketId}/audits.json?per_page=100`;

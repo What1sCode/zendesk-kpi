@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import authRouter, { requireAuth } from './auth.js';
 import { initDb } from './db.js';
-import { getGroups, getGroupMembers, searchTickets, getTicketAudits } from './zendesk.js';
+import { getGroups, getGroupMembers, searchTickets, searchTicketsByAssignees, getTicketAudits } from './zendesk.js';
 import { calculateTicketMetrics, aggregateByAssignee, median } from './metrics.js';
 import { calculateProductivityMetrics, aggregateProductivityByAssignee } from './productivityMetrics.js';
 
@@ -270,8 +270,22 @@ app.get('/api/productivity/stream', requireAuth, metricsLimiter, async (req, res
   }, 10 * 60 * 1000);
 
   try {
-    send({ type: 'status', message: 'Searching tickets...' });
-    const tickets = await searchTickets(group_id, start, end, (msg) => {
+    // Fetch group members first so we can search by assignee
+    // This ensures tickets worked by group members in other groups are included
+    send({ type: 'status', message: 'Fetching group members...' });
+    const members = await getGroupMembers(group_id);
+    const usersMap = new Map(members.map((u) => [u.id, u]));
+    const userIds = members.map((u) => u.id);
+
+    if (userIds.length === 0) {
+      send({ type: 'complete', data: { agents: [], totals: {} } });
+      clearTimeout(timeout);
+      res.end();
+      return;
+    }
+
+    send({ type: 'status', message: 'Searching tickets by assignee...' });
+    const tickets = await searchTicketsByAssignees(userIds, start, end, (msg) => {
       send({ type: 'status', message: msg });
     });
 
@@ -295,9 +309,6 @@ app.get('/api/productivity/stream', requireAuth, metricsLimiter, async (req, res
       res.end();
       return;
     }
-
-    const members = await getGroupMembers(group_id);
-    const usersMap = new Map(members.map((u) => [u.id, u]));
 
     const CONCURRENCY = 10;
     const ticketMetrics = [];
