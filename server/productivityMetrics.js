@@ -48,6 +48,12 @@ export function calculateProductivityMetrics(ticket, audits) {
         if (!firstReplyTs) firstReplyTs = new Date(audit.created_at);
       }
 
+      // Voice call interaction — counts as an agent reply
+      if (event.type === 'VoiceComment' && event.public === false) {
+        agentReplies++;
+        if (!firstReplyTs) firstReplyTs = new Date(audit.created_at);
+      }
+
       // Status changes
       if (event.type === 'Change' && event.field_name === 'status') {
         // First time ticket reaches solved

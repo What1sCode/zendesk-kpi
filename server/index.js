@@ -122,22 +122,36 @@ app.get('/api/metrics/stream', requireAuth, metricsLimiter, async (req, res) => 
   }, 10 * 60 * 1000);
 
   try {
+    send({ type: 'status', message: 'Fetching group members...' });
+    const members = await getGroupMembers(group_id);
+    const userIds = members.map((u) => u.id);
+
     send({ type: 'status', message: 'Searching tickets...' });
-    const tickets = await searchTickets(group_id, start, end, (msg) => {
-      send({ type: 'status', message: msg });
-    });
+    const [groupTickets, assigneeTickets] = await Promise.all([
+      searchTickets(group_id, start, end, (msg) => send({ type: 'status', message: msg })),
+      searchTicketsByAssignees(userIds, start, end),
+    ]);
+
+    const seenIds = new Set();
+    const merged = [];
+    for (const t of [...groupTickets, ...assigneeTickets]) {
+      if (!seenIds.has(t.id)) {
+        seenIds.add(t.id);
+        merged.push(t);
+      }
+    }
 
     const EXCLUDED_SUBJECTS = [
       'Customer signup notification',
       'Customer cancelled subscription',
       'Customer subscription expired',
     ];
-    const filtered = tickets.filter(
+    const filtered = merged.filter(
       (t) => !EXCLUDED_SUBJECTS.some((s) => t.subject === s)
     );
     send({
       type: 'status',
-      message: `Found ${tickets.length} tickets (${filtered.length} after filtering). Fetching audits...`,
+      message: `Found ${filtered.length} tickets. Fetching audits...`,
     });
     const ticketsToProcess = filtered;
 
@@ -148,8 +162,14 @@ app.get('/api/metrics/stream', requireAuth, metricsLimiter, async (req, res) => 
       return;
     }
 
-    const members = await getGroupMembers(group_id);
     const usersMap = new Map(members.map((u) => [u.id, u]));
+    const unknownIds = [...new Set(
+      filtered.map((t) => t.assignee_id).filter((id) => id != null && !usersMap.has(id))
+    )];
+    if (unknownIds.length > 0) {
+      const unknownUsers = await getUsersByIds(unknownIds);
+      for (const u of unknownUsers) usersMap.set(u.id, u);
+    }
 
     const CONCURRENCY = 10;
     const ticketMetrics = [];
