@@ -1,8 +1,9 @@
 import express from 'express';
-import basicAuth from 'express-basic-auth';
+import cookieParser from 'cookie-parser';
 import { rateLimit } from 'express-rate-limit';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import authRouter, { requireAuth } from './auth.js';
 import { getGroups, getGroupMembers, searchTickets, getTicketAudits } from './zendesk.js';
 import { calculateTicketMetrics, aggregateByAssignee, median } from './metrics.js';
 
@@ -13,8 +14,7 @@ const requiredEnvVars = [
   'ZENDESK_SUBDOMAIN',
   'ZENDESK_EMAIL',
   'ZENDESK_API_TOKEN',
-  'DASHBOARD_USERNAME',
-  'DASHBOARD_PASSWORD',
+  'JWT_SECRET',
 ];
 const missingVars = requiredEnvVars.filter((v) => !process.env[v]);
 if (missingVars.length > 0) {
@@ -27,15 +27,15 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(express.json());
+app.use(cookieParser());
 
-// Basic auth — protects all routes including SSE
-app.use(
-  basicAuth({
-    users: { [process.env.DASHBOARD_USERNAME]: process.env.DASHBOARD_PASSWORD },
-    challenge: true,
-    realm: 'Zendesk KPI Dashboard',
-  })
-);
+// Serve static React build in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '..', 'client', 'dist')));
+}
+
+// Auth routes (public — no requireAuth)
+app.use('/api/auth', authRouter);
 
 // Rate limit the SSE endpoint — each request triggers many Zendesk API calls
 const metricsLimiter = rateLimit({
@@ -46,14 +46,9 @@ const metricsLimiter = rateLimit({
   message: { error: 'Too many requests, please wait before generating another report.' },
 });
 
-// Serve static React build in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '..', 'client', 'dist')));
-}
+// --- Protected API Routes ---
 
-// --- API Routes ---
-
-app.get('/api/groups', async (req, res) => {
+app.get('/api/groups', requireAuth, async (req, res) => {
   try {
     const groups = await getGroups();
     res.json({ groups });
@@ -63,21 +58,17 @@ app.get('/api/groups', async (req, res) => {
   }
 });
 
-// SSE streaming endpoint for metrics
-app.get('/api/metrics/stream', metricsLimiter, async (req, res) => {
+app.get('/api/metrics/stream', requireAuth, metricsLimiter, async (req, res) => {
   const { group_id, start, end } = req.query;
 
-  // Validate required params
   if (!group_id || !start || !end) {
     return res.status(400).json({ error: 'group_id, start, and end are required' });
   }
 
-  // Validate group_id is numeric
   if (!/^\d+$/.test(group_id)) {
     return res.status(400).json({ error: 'Invalid group_id' });
   }
 
-  // Validate date format (YYYY-MM-DD)
   const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
   if (!dateRegex.test(start) || !dateRegex.test(end)) {
     return res.status(400).json({ error: 'Invalid date format, use YYYY-MM-DD' });
@@ -94,13 +85,10 @@ app.get('/api/metrics/stream', metricsLimiter, async (req, res) => {
     return res.status(400).json({ error: 'start must be before end' });
   }
 
-  // Limit date range to 1 year to prevent abuse
-  const diffMs = endDate - startDate;
-  if (diffMs > 365 * 24 * 60 * 60 * 1000) {
+  if (endDate - startDate > 365 * 24 * 60 * 60 * 1000) {
     return res.status(400).json({ error: 'Date range cannot exceed 1 year' });
   }
 
-  // Set up SSE
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -111,20 +99,17 @@ app.get('/api/metrics/stream', metricsLimiter, async (req, res) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
-  // Terminate connection after 10 minutes to prevent zombie connections
   const timeout = setTimeout(() => {
     send({ type: 'error', message: 'Request timed out' });
     res.end();
   }, 10 * 60 * 1000);
 
   try {
-    // Step 1: Search tickets (chunked by week to avoid Zendesk 1000-result limit)
     send({ type: 'status', message: 'Searching tickets...' });
     const tickets = await searchTickets(group_id, start, end, (msg) => {
       send({ type: 'status', message: msg });
     });
 
-    // Filter out automated/notification tickets
     const EXCLUDED_SUBJECTS = [
       'Customer signup notification',
       'Customer cancelled subscription',
@@ -146,11 +131,9 @@ app.get('/api/metrics/stream', metricsLimiter, async (req, res) => {
       return;
     }
 
-    // Step 2: Fetch group members for name resolution
     const members = await getGroupMembers(group_id);
     const usersMap = new Map(members.map((u) => [u.id, u]));
 
-    // Step 3: Fetch audits with concurrency limit
     const CONCURRENCY = 10;
     const ticketMetrics = [];
     let completed = 0;
@@ -168,11 +151,9 @@ app.get('/api/metrics/stream', metricsLimiter, async (req, res) => {
       send({ type: 'progress', current: completed, total: ticketsToProcess.length });
     }
 
-    // Step 4: Aggregate
     send({ type: 'status', message: 'Calculating metrics...' });
     const assignees = aggregateByAssignee(ticketMetrics, usersMap);
 
-    // Group-level totals
     const totalTickets = ticketMetrics.length;
     const n = totalTickets;
     const totals = {
