@@ -9,6 +9,11 @@ import { calculateTicketMetrics, aggregateByAssignee, median } from './metrics.j
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+console.log('Starting Zendesk KPI server...');
+console.log(`Node version: ${process.version}`);
+console.log(`NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`PORT: ${process.env.PORT || 3001}`);
+
 // Validate required environment variables on startup
 const requiredEnvVars = [
   'ZENDESK_SUBDOMAIN',
@@ -22,6 +27,7 @@ if (missingVars.length > 0) {
   missingVars.forEach((v) => console.error(`  - ${v}`));
   process.exit(1);
 }
+console.log('Environment variables: OK');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -33,6 +39,11 @@ app.use(cookieParser());
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '..', 'client', 'dist')));
 }
+
+// Health check (public)
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
 // Auth routes (public — no requireAuth)
 app.use('/api/auth', authRouter);
@@ -223,6 +234,17 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Health check: http://0.0.0.0:${PORT}/health`);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled rejection:', reason);
+  process.exit(1);
 });
