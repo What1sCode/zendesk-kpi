@@ -54,13 +54,13 @@ router.post('/signup', async (req, res) => {
     });
   }
 
-  const existing = findUserByEmail(email);
+  const existing = await findUserByEmail(email);
   if (existing) {
     return res.status(409).json({ error: 'An account with that email already exists' });
   }
 
   const hashedPassword = await bcrypt.hash(password, 12);
-  const user = createUser(email.toLowerCase(), hashedPassword, name.trim());
+  const user = await createUser(email.toLowerCase(), hashedPassword, name.trim());
 
   const token = jwt.sign(
     { id: user.id, email: user.email, name: user.name },
@@ -78,7 +78,7 @@ router.post('/login', async (req, res) => {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
-  const user = findUserByEmail(email);
+  const user = await findUserByEmail(email);
   if (!user) {
     // Constant-time response to prevent user enumeration
     await bcrypt.hash('dummy', 12);
