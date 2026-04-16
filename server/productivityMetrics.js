@@ -122,7 +122,7 @@ export function aggregateProductivityByAssignee(ticketMetrics, usersMap) {
         phone: 0,
         chat: 0,
         email: 0,
-        eloview: 0,
+        other: 0,
         totalTaken: 0,
         unsolved: 0,
         solved: 0,
@@ -140,7 +140,7 @@ export function aggregateProductivityByAssignee(ticketMetrics, usersMap) {
     if (tm.channel === 'phone') agg.phone++;
     else if (tm.channel === 'chat') agg.chat++;
     else if (tm.channel === 'email') agg.email++;
-    if (tm.isEloview) agg.eloview++;
+    if (tm.channel === 'other') agg.other++;
     if (tm.isSolved) agg.solved++;
     else agg.unsolved++;
     agg.agentReplies += tm.agentReplies;
@@ -157,7 +157,7 @@ export function aggregateProductivityByAssignee(ticketMetrics, usersMap) {
     phone: agg.phone,
     chat: agg.chat,
     email: agg.email,
-    eloview: agg.eloview,
+    other: agg.other,
     totalTaken: agg.totalTaken,
     unsolved: agg.unsolved,
     solved: agg.solved,

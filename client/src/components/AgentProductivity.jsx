@@ -226,7 +226,7 @@ export default function AgentProductivity() {
                   <th className="text-right px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Phone</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Chat</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Email</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Eloview</th>
+                  <th className="text-right px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Other</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Total Taken</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Unsolved</th>
                   <th className="text-right px-4 py-3 font-medium text-gray-700 whitespace-nowrap">Solved</th>
@@ -256,7 +256,7 @@ export default function AgentProductivity() {
                       <td className="px-4 py-3 text-right text-gray-700">{agent.phone}</td>
                       <td className="px-4 py-3 text-right text-gray-700">{agent.chat}</td>
                       <td className="px-4 py-3 text-right text-gray-700">{agent.email}</td>
-                      <td className="px-4 py-3 text-right text-gray-700">{agent.eloview}</td>
+                      <td className="px-4 py-3 text-right text-gray-700">{agent.other}</td>
                       <td className="px-4 py-3 text-right font-medium text-gray-900">{agent.totalTaken}</td>
                       <td className={`px-4 py-3 text-right font-medium ${agent.unsolved > 0 ? 'text-red-600' : 'text-gray-700'}`}>
                         {agent.unsolved}
