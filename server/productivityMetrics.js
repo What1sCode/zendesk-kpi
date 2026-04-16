@@ -5,6 +5,21 @@ const CHAT_TAGS = ['chat_offline', 'chat_caseorigin'];
 const EMAIL_TAGS = ['email_caseorigin', 'web_caseorigin'];
 const ELOVIEW_TAG = 'ev_new_message';
 
+const AUTOMATION_SUBJECT_CONTAINS = [
+  'customer signup summary notification',
+  'customer signup notification',
+  'customer cancelled subscription',
+  'call could not be transcribed or summarized',
+];
+
+function isAutomationSubject(subject) {
+  if (!subject) return false;
+  const lower = subject.toLowerCase();
+  if (AUTOMATION_SUBJECT_CONTAINS.some((s) => lower.includes(s))) return true;
+  if (lower.startsWith('abandoned call from:')) return true;
+  return false;
+}
+
 function getChannel(ticket) {
   const tags = ticket.tags || [];
   if (PHONE_TAGS.some((t) => tags.includes(t))) return 'phone';
@@ -62,6 +77,7 @@ export function calculateProductivityMetrics(ticket, audits) {
     status: ticket.status,
     channel: getChannel(ticket),
     isEloview: (ticket.tags || []).includes(ELOVIEW_TAG),
+    isSubjectAutomation: isAutomationSubject(ticket.subject),
     agentReplies,
     firstReplyBizSeconds,
     resolutionBizSeconds,
@@ -71,15 +87,35 @@ export function calculateProductivityMetrics(ticket, audits) {
   };
 }
 
+const AUTOMATION_SENTINEL = '__automation__';
+
 export function aggregateProductivityByAssignee(ticketMetrics, usersMap) {
   const byAssignee = {};
 
+  // Find the Zendesk Agent user ID in usersMap (if present) so subject-automation
+  // tickets land in the same row as tickets actually assigned to Zendesk Agent.
+  let zenDeskAgentId = null;
+  for (const [id, user] of usersMap) {
+    if (user.name && user.name.toLowerCase() === 'zendesk agent') {
+      zenDeskAgentId = id;
+      break;
+    }
+  }
+  const automationBucketId = zenDeskAgentId ?? AUTOMATION_SENTINEL;
+
   for (const tm of ticketMetrics) {
-    const id = tm.assigneeId || 0;
+    const id = tm.isSubjectAutomation ? automationBucketId : (tm.assigneeId || 0);
     if (!byAssignee[id]) {
       const user = usersMap.get(id);
-      const assigneeName = user ? user.name : id === 0 ? 'Unassigned' : `User ${id}`;
-    byAssignee[id] = {
+      const assigneeName =
+        id === AUTOMATION_SENTINEL
+          ? 'Zendesk Agent'
+          : user
+          ? user.name
+          : id === 0
+          ? 'Unassigned'
+          : `User ${id}`;
+      byAssignee[id] = {
         assigneeId: id,
         assigneeName,
         isAutomation: assigneeName.toLowerCase() === 'zendesk agent',

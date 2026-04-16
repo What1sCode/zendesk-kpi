@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Dashboard from './components/Dashboard';
 import AgentProductivity from './components/AgentProductivity';
 import AuthPage from './components/AuthPage';
@@ -7,6 +7,8 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [checking, setChecking] = useState(true);
   const [activeTab, setActiveTab] = useState('efficiency');
+  const inactivityTimer = useRef(null);
+  const TIMEOUT_MS = 15 * 60 * 1000;
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -17,6 +19,21 @@ export default function App() {
       })
       .catch(() => setChecking(false));
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const reset = () => {
+      clearTimeout(inactivityTimer.current);
+      inactivityTimer.current = setTimeout(handleLogout, TIMEOUT_MS);
+    };
+    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'];
+    events.forEach((e) => window.addEventListener(e, reset));
+    reset();
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, reset));
+      clearTimeout(inactivityTimer.current);
+    };
+  }, [user]);
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
