@@ -37,6 +37,7 @@ const PORT = process.env.PORT || 3001;
 
 app.set('trust proxy', 1);
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
 // Serve static React build in production
