@@ -25,6 +25,7 @@ export default function AuthPage({ onAuth }) {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [verifyPending, setVerifyPending] = useState(false);
 
   const strength = getPasswordStrength(password);
 
@@ -60,6 +61,11 @@ export default function AuthPage({ onAuth }) {
         return;
       }
 
+      if (tab === 'signup') {
+        setVerifyPending(true);
+        return;
+      }
+
       onAuth(data);
     } catch {
       setError('Network error, please try again');
@@ -73,6 +79,33 @@ export default function AuthPage({ onAuth }) {
     setError('');
     setPassword('');
     setConfirm('');
+  }
+
+  if (verifyPending) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="w-full max-w-md text-center">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+            <div className="text-5xl mb-4">📧</div>
+            <h2 className="text-xl font-semibold text-gray-800 mb-2">Check your email</h2>
+            <p className="text-sm text-gray-500 mb-1">
+              We sent a verification link to
+            </p>
+            <p className="text-sm font-medium text-gray-800 mb-4">{email}</p>
+            <p className="text-sm text-gray-500">
+              Click the link in the email to activate your account, then come back here to sign in.
+              The link expires in 24 hours.
+            </p>
+            <button
+              onClick={() => { setVerifyPending(false); setTab('login'); }}
+              className="mt-6 text-sm text-blue-600 hover:underline"
+            >
+              Back to sign in
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

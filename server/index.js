@@ -22,6 +22,7 @@ const requiredEnvVars = [
   'ZENDESK_API_TOKEN',
   'JWT_SECRET',
   'DATABASE_URL',
+  'RESEND_API_KEY',
 ];
 const missingVars = requiredEnvVars.filter((v) => !process.env[v]);
 if (missingVars.length > 0) {
