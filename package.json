@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "express": "^4.21.0",
-    "cors": "^2.8.5"
+    "express-basic-auth": "^1.2.1",
+    "express-rate-limit": "^7.4.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
