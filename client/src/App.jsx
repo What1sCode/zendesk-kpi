@@ -75,8 +75,8 @@ export default function App() {
       </div>
 
       <main className="max-w-7xl mx-auto px-4 py-6">
-        {activeTab === 'efficiency' && <Dashboard />}
-        {activeTab === 'productivity' && <AgentProductivity />}
+        <div className={activeTab === 'efficiency' ? '' : 'hidden'}><Dashboard /></div>
+        <div className={activeTab === 'productivity' ? '' : 'hidden'}><AgentProductivity /></div>
       </main>
     </div>
   );
