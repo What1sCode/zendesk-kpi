@@ -78,9 +78,11 @@ export function aggregateProductivityByAssignee(ticketMetrics, usersMap) {
     const id = tm.assigneeId || 0;
     if (!byAssignee[id]) {
       const user = usersMap.get(id);
-      byAssignee[id] = {
+      const assigneeName = user ? user.name : id === 0 ? 'Unassigned' : `User ${id}`;
+    byAssignee[id] = {
         assigneeId: id,
-        assigneeName: user ? user.name : id === 0 ? 'Unassigned' : `User ${id}`,
+        assigneeName,
+        isAutomation: assigneeName.toLowerCase() === 'zendesk agent',
         phone: 0,
         chat: 0,
         email: 0,
@@ -129,5 +131,6 @@ export function aggregateProductivityByAssignee(ticketMetrics, usersMap) {
     medFirstReplyBizSeconds: agg.firstReplyTimes.length ? median(agg.firstReplyTimes) : null,
     medResolutionBizSeconds: agg.resolutionTimes.length ? median(agg.resolutionTimes) : null,
     tickets: agg.tickets,
+    isAutomation: agg.isAutomation,
   }));
 }

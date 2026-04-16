@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import authRouter, { requireAuth } from './auth.js';
 import { initDb } from './db.js';
-import { getGroups, getGroupMembers, searchTickets, searchTicketsByAssignees, getTicketAudits } from './zendesk.js';
+import { getGroups, getGroupMembers, searchTickets, searchTicketsByAssignees, getUsersByIds, getTicketAudits } from './zendesk.js';
 import { calculateTicketMetrics, aggregateByAssignee, median } from './metrics.js';
 import { calculateProductivityMetrics, aggregateProductivityByAssignee } from './productivityMetrics.js';
 
@@ -270,11 +270,8 @@ app.get('/api/productivity/stream', requireAuth, metricsLimiter, async (req, res
   }, 10 * 60 * 1000);
 
   try {
-    // Fetch group members first so we can search by assignee
-    // This ensures tickets worked by group members in other groups are included
     send({ type: 'status', message: 'Fetching group members...' });
     const members = await getGroupMembers(group_id);
-    const usersMap = new Map(members.map((u) => [u.id, u]));
     const userIds = members.map((u) => u.id);
 
     if (userIds.length === 0) {
@@ -284,17 +281,31 @@ app.get('/api/productivity/stream', requireAuth, metricsLimiter, async (req, res
       return;
     }
 
-    send({ type: 'status', message: 'Searching tickets by assignee...' });
-    const tickets = await searchTicketsByAssignees(userIds, start, end, (msg) => {
-      send({ type: 'status', message: msg });
-    });
+    // Run group search and assignee search in parallel
+    // Group search: catches unassigned + automation tickets in the group
+    // Assignee search: catches cross-group tickets assigned to group members
+    send({ type: 'status', message: 'Searching tickets...' });
+    const [groupTickets, assigneeTickets] = await Promise.all([
+      searchTickets(group_id, start, end),
+      searchTicketsByAssignees(userIds, start, end),
+    ]);
+
+    // Merge and deduplicate
+    const seenIds = new Set();
+    const merged = [];
+    for (const t of [...groupTickets, ...assigneeTickets]) {
+      if (!seenIds.has(t.id)) {
+        seenIds.add(t.id);
+        merged.push(t);
+      }
+    }
 
     const EXCLUDED_SUBJECTS = [
       'Customer signup notification',
       'Customer cancelled subscription',
       'Customer subscription expired',
     ];
-    const filtered = tickets.filter(
+    const filtered = merged.filter(
       (t) => !EXCLUDED_SUBJECTS.some((s) => t.subject === s)
     );
 
@@ -308,6 +319,18 @@ app.get('/api/productivity/stream', requireAuth, metricsLimiter, async (req, res
       clearTimeout(timeout);
       res.end();
       return;
+    }
+
+    // Build users map — start with group members, then fill in unknown assignees
+    const usersMap = new Map(members.map((u) => [u.id, u]));
+    const unknownIds = [...new Set(
+      filtered
+        .map((t) => t.assignee_id)
+        .filter((id) => id != null && !usersMap.has(id))
+    )];
+    if (unknownIds.length > 0) {
+      const unknownUsers = await getUsersByIds(unknownIds);
+      for (const u of unknownUsers) usersMap.set(u.id, u);
     }
 
     const CONCURRENCY = 10;

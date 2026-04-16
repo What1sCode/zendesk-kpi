@@ -148,6 +148,17 @@ export async function searchTicketsByAssignees(userIds, startDate, endDate, onCh
   return allTickets;
 }
 
+export async function getUsersByIds(ids) {
+  if (ids.length === 0) return [];
+  const users = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const batch = ids.slice(i, i + 100);
+    const data = await request(`/users/show_many.json?ids=${batch.join(',')}`);
+    users.push(...data.users);
+  }
+  return users;
+}
+
 export async function getTicketAudits(ticketId) {
   let audits = [];
   let url = `/tickets/${ticketId}/audits.json?per_page=100`;

@@ -51,6 +51,7 @@ export default function AgentProductivity() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [expandedAgent, setExpandedAgent] = useState(null);
+  const [excludeAutomations, setExcludeAutomations] = useState(false);
   const eventSourceRef = useRef(null);
 
   useEffect(() => {
@@ -101,7 +102,33 @@ export default function AgentProductivity() {
     };
   }
 
-  const t = data?.totals;
+  function median(values) {
+    if (!values.length) return null;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+
+  function computeTotals(agents) {
+    const tickets = agents.flatMap((a) => a.tickets);
+    const solved = tickets.filter((t) => t.isSolved);
+    const oneTouchCount = tickets.filter((t) => t.oneTouch).length;
+    const firstReplyTimes = tickets.filter((t) => t.firstReplyBizSeconds != null).map((t) => t.firstReplyBizSeconds);
+    const resTimes = tickets.filter((t) => t.resolutionBizSeconds != null).map((t) => t.resolutionBizSeconds);
+    return {
+      created: tickets.length,
+      solved: solved.length,
+      unsolved: tickets.length - solved.length,
+      oneTouchPct: solved.length > 0 ? (oneTouchCount / solved.length) * 100 : 0,
+      medFirstReplyBizSeconds: median(firstReplyTimes),
+      medResolutionBizSeconds: median(resTimes),
+    };
+  }
+
+  const visibleAgents = data
+    ? (excludeAutomations ? data.agents.filter((a) => !a.isAutomation) : data.agents)
+    : [];
+  const t = data ? computeTotals(visibleAgents) : null;
 
   return (
     <div className="space-y-6">
@@ -122,6 +149,18 @@ export default function AgentProductivity() {
           >
             {loading ? 'Loading...' : 'Generate Report'}
           </button>
+
+          {data && (
+            <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer ml-2">
+              <input
+                type="checkbox"
+                checked={excludeAutomations}
+                onChange={(e) => setExcludeAutomations(e.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              Exclude automations
+            </label>
+          )}
         </div>
 
         {loading && (
@@ -199,7 +238,7 @@ export default function AgentProductivity() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {data.agents.map((agent) => (
+                {visibleAgents.map((agent) => (
                   <>
                     <tr
                       key={agent.assigneeId}
