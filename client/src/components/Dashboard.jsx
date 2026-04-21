@@ -73,6 +73,16 @@ function Toggle({ left, right, active, onToggle, hint, disabled }) {
   );
 }
 
+function downloadJson(payload, startDate, endDate) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `efficiency-${startDate}-to-${endDate}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -88,7 +98,6 @@ export default function Dashboard() {
   const [error,         setError]         = useState('');
   const [useBizHours,   setUseBizHours]   = useState(true);
   const [useMedian,     setUseMedian]     = useState(false);
-  const [excludeEloview,  setExcludeEloview]  = useState(false);
   const [comparePrior,    setComparePrior]    = useState(false);
   const [priorTotals,     setPriorTotals]     = useState(null);
   const [priorLoading,    setPriorLoading]    = useState(false);
@@ -107,13 +116,13 @@ export default function Dashboard() {
     setEndDate(local(end));
   }, []);
 
-  function startPriorPeriod(gId, start, end, exEloview) {
+  function startPriorPeriod(gId, start, end) {
     if (priorSourceRef.current) priorSourceRef.current.close();
     setPriorTotals(null);
     setPriorLoading(true);
     const { priorStart, priorEnd } = calcPriorDates(start, end);
     const params = new URLSearchParams({
-      group_id: gId, start: priorStart, end: priorEnd, exclude_eloview: exEloview,
+      group_id: gId, start: priorStart, end: priorEnd,
     });
     const es = new EventSource(`/api/metrics/stream?${params}`);
     priorSourceRef.current = es;
@@ -133,10 +142,9 @@ export default function Dashboard() {
     setLoading(true); setProgress(null); setStatusMessage('Connecting...');
     setData(null); setPriorTotals(null); setError('');
 
-    // Capture current values so the async callbacks reference the correct request
-    const gId = groupId, s = startDate, e = endDate, exElo = excludeEloview, cmp = comparePrior;
+    const gId = groupId, s = startDate, e = endDate, cmp = comparePrior;
 
-    const params = new URLSearchParams({ group_id: gId, start: s, end: e, exclude_eloview: exElo });
+    const params = new URLSearchParams({ group_id: gId, start: s, end: e });
     const es = new EventSource(`/api/metrics/stream?${params}`);
     eventSourceRef.current = es;
 
@@ -152,7 +160,7 @@ export default function Dashboard() {
         setLoading(false);
         setStatusMessage('');
         es.close();
-        if (cmp) startPriorPeriod(gId, s, e, exElo);
+        if (cmp) startPriorPeriod(gId, s, e);
       } else if (msg.type === 'error') {
         setError(msg.message); setLoading(false); es.close();
       }
@@ -219,18 +227,6 @@ export default function Dashboard() {
 
           <div className="w-px h-6 bg-gray-200 hidden sm:block" />
 
-          <label
-            className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer"
-            title="Server-side filter — requires re-generating the report"
-          >
-            <input
-              type="checkbox" checked={excludeEloview}
-              onChange={(e) => setExcludeEloview(e.target.checked)}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            Exclude Eloview&nbsp;<span className="text-gray-400 text-xs">↺</span>
-          </label>
-
           <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
             <input
               type="checkbox" checked={comparePrior}
@@ -240,15 +236,26 @@ export default function Dashboard() {
             Compare prior period
           </label>
 
-          <button
-            onClick={() => setShowSlaSettings(!showSlaSettings)}
-            title="Configure SLA targets"
-            className={`ml-auto p-1.5 rounded-md text-lg leading-none transition-colors ${
-              showSlaSettings ? 'bg-gray-100 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            ⚙
-          </button>
+          <div className="ml-auto flex items-center gap-1">
+            {data && (
+              <button
+                onClick={() => downloadJson(data, startDate, endDate)}
+                title="Download raw JSON for this report"
+                className="p-1.5 rounded-md text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors font-mono"
+              >
+                ↓ JSON
+              </button>
+            )}
+            <button
+              onClick={() => setShowSlaSettings(!showSlaSettings)}
+              title="Configure SLA targets"
+              className={`p-1.5 rounded-md text-lg leading-none transition-colors ${
+                showSlaSettings ? 'bg-gray-100 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              ⚙
+            </button>
+          </div>
         </div>
 
         {showSlaSettings && (

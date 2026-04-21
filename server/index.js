@@ -200,14 +200,14 @@ app.get('/api/metrics/stream', requireAuth, metricsLimiter, async (req, res) => 
       totalFlapping: ticketMetrics.reduce((s, t) => s + t.flapping, 0),
       medTimeInNew: median(ticketMetrics.map((t) => t.timeInNew)),
       medTimeInOpen: median(ticketMetrics.map((t) => t.timeInOpen)),
-      medTimeInPending: median(ticketMetrics.map((t) => t.timeInPending)),
+      medTimeInPending: (() => { const p = ticketMetrics.filter((t) => t.timeInPending > 0).map((t) => t.timeInPending); return p.length ? median(p) : null; })(),
       medFlapping: median(ticketMetrics.map((t) => t.flapping)),
       avgBizTimeInNew: n ? ticketMetrics.reduce((s, t) => s + t.bizTimeInNew, 0) / n : 0,
       avgBizTimeInOpen: n ? ticketMetrics.reduce((s, t) => s + t.bizTimeInOpen, 0) / n : 0,
-      avgBizTimeInPending: n ? ticketMetrics.reduce((s, t) => s + t.bizTimeInPending, 0) / n : 0,
+      avgBizTimeInPending: (() => { const p = ticketMetrics.filter((t) => t.bizTimeInPending > 0); return p.length ? p.reduce((s, t) => s + t.bizTimeInPending, 0) / p.length : null; })(),
       medBizTimeInNew: median(ticketMetrics.map((t) => t.bizTimeInNew)),
       medBizTimeInOpen: median(ticketMetrics.map((t) => t.bizTimeInOpen)),
-      medBizTimeInPending: median(ticketMetrics.map((t) => t.bizTimeInPending)),
+      medBizTimeInPending: (() => { const p = ticketMetrics.filter((t) => t.bizTimeInPending > 0).map((t) => t.bizTimeInPending); return p.length ? median(p) : null; })(),
       avgPickupTime: (() => {
         const p = ticketMetrics.filter((t) => t.pickupTime != null);
         return p.length ? p.reduce((s, t) => s + t.pickupTime, 0) / p.length : null;
