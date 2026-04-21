@@ -2,88 +2,146 @@ import { useState, useEffect, useRef } from 'react';
 import GroupSelector from './GroupSelector';
 import DateRangePicker from './DateRangePicker';
 import MetricsTable from './MetricsTable';
+import SummaryCard, { DeltaBadge } from './SummaryCard';
+import SlaSettings from './SlaSettings';
+import { useSlaTargets } from '../hooks/useSlaTargets';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function formatDuration(seconds) {
   if (seconds == null || isNaN(seconds)) return '—';
-  const days = Math.floor(seconds / 86400);
+  const days  = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
+  const mins  = Math.floor((seconds % 3600) / 60);
+  if (days > 0)  return `${days}d ${hours}h ${mins}m`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
 }
 
-function Toggle({ left, right, active, onToggle, hint }) {
+// Returns 'good' | 'warn' | 'bad' | null based on how seconds compares to a target in hours.
+function durStatus(seconds, targetHours) {
+  if (seconds == null || !targetHours) return null;
+  const r = seconds / (targetHours * 3600);
+  if (r <= 1)   return 'good';
+  if (r <= 1.5) return 'warn';
+  return 'bad';
+}
+
+function flappingStatus(value, max) {
+  if (value == null || !max) return null;
+  if (value <= max)       return 'good';
+  if (value <= max * 1.5) return 'warn';
+  return 'bad';
+}
+
+// Calculates the prior period: same duration ending the day before `start`.
+function calcPriorDates(start, end) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmt = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  const sD   = new Date(start + 'T12:00:00Z');
+  const eD   = new Date(end   + 'T12:00:00Z');
+  const span = Math.round((eD - sD) / 86400000);
+  const priorEnd   = new Date(sD); priorEnd.setUTCDate(priorEnd.getUTCDate() - 1);
+  const priorStart = new Date(priorEnd); priorStart.setUTCDate(priorStart.getUTCDate() - span);
+  return { priorStart: fmt(priorStart), priorEnd: fmt(priorEnd) };
+}
+
+// ---------------------------------------------------------------------------
+// Toggle
+// ---------------------------------------------------------------------------
+
+function Toggle({ left, right, active, onToggle, hint, disabled }) {
   const isRight = active === 'right';
   return (
-    <div className="flex items-center gap-3">
-      <span className={`text-sm font-medium ${!isRight ? 'text-gray-900' : 'text-gray-400'}`}>
-        {left}
-      </span>
+    <div className={`flex items-center gap-2 ${disabled ? 'opacity-40 pointer-events-none' : ''}`}>
+      <span className={`text-sm font-medium ${!isRight ? 'text-gray-900' : 'text-gray-400'}`}>{left}</span>
       <button
         onClick={onToggle}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+        className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors ${
           isRight ? 'bg-blue-600' : 'bg-gray-300'
         }`}
       >
-        <span
-          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-            isRight ? 'translate-x-6' : 'translate-x-1'
-          }`}
-        />
+        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+          isRight ? 'translate-x-5' : 'translate-x-1'
+        }`} />
       </button>
-      <span className={`text-sm font-medium ${isRight ? 'text-gray-900' : 'text-gray-400'}`}>
-        {right}
-      </span>
-      {hint && <span className="text-xs text-gray-500">{hint}</span>}
+      <span className={`text-sm font-medium ${isRight ? 'text-gray-900' : 'text-gray-400'}`}>{right}</span>
+      {hint && <span className="text-xs text-gray-400">{hint}</span>}
     </div>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
 export default function Dashboard() {
-  const [groupId, setGroupId] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [progress, setProgress] = useState(null);
+  const [groupId,       setGroupId]       = useState('');
+  const [startDate,     setStartDate]     = useState('');
+  const [endDate,       setEndDate]       = useState('');
+  const [loading,       setLoading]       = useState(false);
+  const [progress,      setProgress]      = useState(null);
   const [statusMessage, setStatusMessage] = useState('');
-  const [data, setData] = useState(null);
-  const [error, setError] = useState('');
-  const [useBizHours, setUseBizHours] = useState(true);
-  const [useMedian, setUseMedian] = useState(false);
-  const [excludeEloview, setExcludeEloview] = useState(false);
+  const [data,          setData]          = useState(null);
+  const [error,         setError]         = useState('');
+  const [useBizHours,   setUseBizHours]   = useState(true);
+  const [useMedian,     setUseMedian]     = useState(false);
+  const [excludeEloview,  setExcludeEloview]  = useState(false);
+  const [comparePrior,    setComparePrior]    = useState(false);
+  const [priorTotals,     setPriorTotals]     = useState(null);
+  const [priorLoading,    setPriorLoading]    = useState(false);
+  const [showSlaSettings, setShowSlaSettings] = useState(false);
+  const { targets, setTargets, resetTargets } = useSlaTargets();
+
   const eventSourceRef = useRef(null);
+  const priorSourceRef = useRef(null);
 
   useEffect(() => {
     const pad = (n) => String(n).padStart(2, '0');
-    const localDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    const end = new Date();
-    const start = new Date();
+    const local = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const end = new Date(); const start = new Date();
     start.setDate(start.getDate() - 30);
-    setStartDate(localDateStr(start));
-    setEndDate(localDateStr(end));
+    setStartDate(local(start));
+    setEndDate(local(end));
   }, []);
+
+  function startPriorPeriod(gId, start, end, exEloview) {
+    if (priorSourceRef.current) priorSourceRef.current.close();
+    setPriorTotals(null);
+    setPriorLoading(true);
+    const { priorStart, priorEnd } = calcPriorDates(start, end);
+    const params = new URLSearchParams({
+      group_id: gId, start: priorStart, end: priorEnd, exclude_eloview: exEloview,
+    });
+    const es = new EventSource(`/api/metrics/stream?${params}`);
+    priorSourceRef.current = es;
+    es.onmessage = (evt) => {
+      const msg = JSON.parse(evt.data);
+      if (msg.type === 'complete') { setPriorTotals(msg.data.totals); setPriorLoading(false); es.close(); }
+      else if (msg.type === 'error') { setPriorLoading(false); es.close(); }
+    };
+    es.onerror = () => { setPriorLoading(false); es.close(); };
+  }
 
   function handleGenerate() {
     if (!groupId || !startDate || !endDate) return;
+    if (eventSourceRef.current) eventSourceRef.current.close();
+    if (priorSourceRef.current) priorSourceRef.current.close();
 
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-    }
+    setLoading(true); setProgress(null); setStatusMessage('Connecting...');
+    setData(null); setPriorTotals(null); setError('');
 
-    setLoading(true);
-    setProgress(null);
-    setStatusMessage('Connecting...');
-    setData(null);
-    setError('');
+    // Capture current values so the async callbacks reference the correct request
+    const gId = groupId, s = startDate, e = endDate, exElo = excludeEloview, cmp = comparePrior;
 
-    const params = new URLSearchParams({ group_id: groupId, start: startDate, end: endDate, exclude_eloview: excludeEloview });
+    const params = new URLSearchParams({ group_id: gId, start: s, end: e, exclude_eloview: exElo });
     const es = new EventSource(`/api/metrics/stream?${params}`);
     eventSourceRef.current = es;
 
     es.onmessage = (event) => {
       const msg = JSON.parse(event.data);
-
       if (msg.type === 'status') {
         setStatusMessage(msg.message);
       } else if (msg.type === 'progress') {
@@ -94,36 +152,45 @@ export default function Dashboard() {
         setLoading(false);
         setStatusMessage('');
         es.close();
+        if (cmp) startPriorPeriod(gId, s, e, exElo);
       } else if (msg.type === 'error') {
-        setError(msg.message);
-        setLoading(false);
-        es.close();
+        setError(msg.message); setLoading(false); es.close();
       }
     };
-
-    es.onerror = () => {
-      setError('Connection lost. Please try again.');
-      setLoading(false);
-      es.close();
-    };
+    es.onerror = () => { setError('Connection lost. Please try again.'); setLoading(false); es.close(); };
   }
 
-  const t = data?.totals;
+  // ── Derived values ──────────────────────────────────────────────────────
+  const t   = data?.totals;
+  const p   = priorTotals;
   const biz = useBizHours ? 'Biz' : '';
-  const am = useMedian ? 'med' : 'avg';
-  const label = useMedian ? 'Median' : 'Avg';
+  const am  = useMedian   ? 'med' : 'avg';
+
+  const pickupVal  = t ? (useMedian ? t.medPickupTime : t.avgPickupTime) : null;
+  const closeVal   = t ? t[`${am}${biz}TimeToClose`]   : null;
+  const newVal     = t ? t[`${am}${biz}TimeInNew`]     : null;
+  const openVal    = t ? t[`${am}${biz}TimeInOpen`]    : null;
+  const pendingVal = t ? t[`${am}${biz}TimeInPending`] : null;
+  const flappVal   = t ? (useMedian ? t.medFlapping : t.avgFlapping) : null;
+
+  const pPickup  = p ? (useMedian ? p.medPickupTime : p.avgPickupTime) : null;
+  const pClose   = p ? p[`${am}${biz}TimeToClose`]   : null;
+  const pNew     = p ? p[`${am}${biz}TimeInNew`]     : null;
+  const pOpen    = p ? p[`${am}${biz}TimeInOpen`]    : null;
+  const pPending = p ? p[`${am}${biz}TimeInPending`] : null;
+  const pFlapp   = p ? (useMedian ? p.medFlapping : p.avgFlapping) : null;
+
+  const metricLabel = useMedian ? 'Med' : 'Avg';
 
   return (
     <div className="space-y-6">
-      {/* Filter Bar */}
+      {/* ── Filter Bar ─────────────────────────────────────────────────── */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-        <div className="flex flex-wrap items-end gap-4">
+        <div className="flex flex-wrap items-center gap-3">
           <GroupSelector value={groupId} onChange={setGroupId} />
           <DateRangePicker
-            startDate={startDate}
-            endDate={endDate}
-            onStartChange={setStartDate}
-            onEndChange={setEndDate}
+            startDate={startDate} endDate={endDate}
+            onStartChange={setStartDate} onEndChange={setEndDate}
           />
           <button
             onClick={handleGenerate}
@@ -132,20 +199,65 @@ export default function Dashboard() {
           >
             {loading ? 'Loading...' : 'Generate Report'}
           </button>
-          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer ml-2">
+
+          <div className="w-px h-6 bg-gray-200 hidden sm:block" />
+
+          {/* Toggles — always visible, dimmed until data loads */}
+          <Toggle
+            left="Calendar" right="Biz Hours"
+            active={useBizHours ? 'right' : 'left'}
+            onToggle={() => setUseBizHours(!useBizHours)}
+            hint={useBizHours ? '(Mon–Fri 8–5 ET)' : null}
+            disabled={!data}
+          />
+          <Toggle
+            left="Avg" right="Median"
+            active={useMedian ? 'right' : 'left'}
+            onToggle={() => setUseMedian(!useMedian)}
+            disabled={!data}
+          />
+
+          <div className="w-px h-6 bg-gray-200 hidden sm:block" />
+
+          <label
+            className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer"
+            title="Server-side filter — requires re-generating the report"
+          >
             <input
-              type="checkbox"
-              checked={excludeEloview}
+              type="checkbox" checked={excludeEloview}
               onChange={(e) => setExcludeEloview(e.target.checked)}
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            Exclude Eloview
+            Exclude Eloview&nbsp;<span className="text-gray-400 text-xs">↺</span>
           </label>
+
+          <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer">
+            <input
+              type="checkbox" checked={comparePrior}
+              onChange={(e) => setComparePrior(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            Compare prior period
+          </label>
+
+          <button
+            onClick={() => setShowSlaSettings(!showSlaSettings)}
+            title="Configure SLA targets"
+            className={`ml-auto p-1.5 rounded-md text-lg leading-none transition-colors ${
+              showSlaSettings ? 'bg-gray-100 text-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            ⚙
+          </button>
         </div>
+
+        {showSlaSettings && (
+          <SlaSettings targets={targets} setTargets={setTargets} resetTargets={resetTargets} tab="efficiency" />
+        )}
 
         {loading && (
           <div className="mt-4">
-            <p className="text-sm text-gray-600 mb-1">{statusMessage}</p>
+            <p className="text-sm text-gray-500 mb-1">{statusMessage}</p>
             {progress && (
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div
@@ -156,66 +268,69 @@ export default function Dashboard() {
             )}
           </div>
         )}
+
+        {priorLoading && (
+          <p className="mt-2 text-xs text-gray-400">Fetching prior period for comparison…</p>
+        )}
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">
-          {error}
-        </div>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">{error}</div>
       )}
 
       {data && (
         <>
-          {/* Toggles */}
-          <div className="flex flex-wrap items-center gap-6">
-            <Toggle
-              left="Calendar Time"
-              right="Business Hours"
-              active={useBizHours ? 'right' : 'left'}
-              onToggle={() => setUseBizHours(!useBizHours)}
-              hint={useBizHours ? '(Mon-Fri, 8am-5pm ET)' : null}
-            />
-            <Toggle
-              left="Average"
-              right="Median"
-              active={useMedian ? 'right' : 'left'}
-              onToggle={() => setUseMedian(!useMedian)}
-            />
-          </div>
-
-          {/* Summary Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          {/* ── Summary Cards ────────────────────────────────────────────── */}
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
             <SummaryCard
-              label={`${label} Pickup Time`}
-              value={formatDuration(useMedian ? t.medPickupTime : t.avgPickupTime)}
-              subtitle="biz hours only"
+              label="Tickets"
+              value={t.ticketCount}
+              color="gray"
+              delta={<DeltaBadge current={t.ticketCount} prior={p?.ticketCount} neutral />}
+            />
+            <SummaryCard
+              label={`${metricLabel} Pickup`}
+              value={formatDuration(pickupVal)}
+              subtitle="biz hours"
               color="green"
+              status={durStatus(pickupVal, targets.pickupTimeHours)}
+              delta={<DeltaBadge current={pickupVal} prior={pPickup} />}
             />
             <SummaryCard
-              label={`${label} Time to Close`}
-              value={formatDuration(t[`${am}${biz}TimeToClose`])}
+              label={`${metricLabel} Time to Close`}
+              value={formatDuration(closeVal)}
               color="teal"
+              status={durStatus(closeVal, targets.timeToCloseHours)}
+              delta={<DeltaBadge current={closeVal} prior={pClose} />}
             />
             <SummaryCard
-              label={`${label} Time in New`}
-              value={formatDuration(t[`${am}${biz}TimeInNew`])}
+              label={`${metricLabel} Time in New`}
+              value={formatDuration(newVal)}
               color="blue"
+              status={durStatus(newVal, targets.timeInNewHours)}
+              delta={<DeltaBadge current={newVal} prior={pNew} />}
             />
             <SummaryCard
-              label={`${label} Time in Open`}
-              value={formatDuration(t[`${am}${biz}TimeInOpen`])}
+              label={`${metricLabel} Time in Open`}
+              value={formatDuration(openVal)}
               color="red"
+              status={durStatus(openVal, targets.timeInOpenHours)}
+              delta={<DeltaBadge current={openVal} prior={pOpen} />}
             />
             <SummaryCard
-              label={`${label} Time in Pending`}
-              value={formatDuration(t[`${am}${biz}TimeInPending`])}
+              label={`${metricLabel} Time in Pending`}
+              value={formatDuration(pendingVal)}
               color="yellow"
+              status={durStatus(pendingVal, targets.timeInPendingHours)}
+              delta={<DeltaBadge current={pendingVal} prior={pPending} />}
             />
             <SummaryCard
-              label={`${label} Flapping`}
-              value={useMedian ? t.medFlapping : t.avgFlapping.toFixed(1)}
-              subtitle={`${t.totalFlapping} total across ${data.ticketCount} tickets`}
+              label={`${metricLabel} Flapping`}
+              value={flappVal != null ? flappVal.toFixed(1) : '—'}
+              subtitle={`${t.totalFlapping} total`}
               color="purple"
+              status={flappingStatus(flappVal, targets.maxFlapping)}
+              delta={<DeltaBadge current={flappVal} prior={pFlapp} />}
             />
           </div>
 
@@ -227,25 +342,6 @@ export default function Dashboard() {
           />
         </>
       )}
-    </div>
-  );
-}
-
-function SummaryCard({ label, value, subtitle, color }) {
-  const colorMap = {
-    green: 'border-green-400 bg-green-50',
-    teal: 'border-teal-400 bg-teal-50',
-    blue: 'border-blue-400 bg-blue-50',
-    red: 'border-red-400 bg-red-50',
-    yellow: 'border-yellow-400 bg-yellow-50',
-    purple: 'border-purple-400 bg-purple-50',
-  };
-
-  return (
-    <div className={`rounded-lg border-l-4 p-4 ${colorMap[color] || 'border-gray-400 bg-gray-50'}`}>
-      <p className="text-sm text-gray-600">{label}</p>
-      <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
-      {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
     </div>
   );
 }

@@ -57,7 +57,7 @@ export default function App() {
       <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-gray-800">Zendesk KPI Dashboard</h1>
-          <p className="text-sm text-gray-500">Time in Status &amp; Flapping Metrics</p>
+          <p className="text-sm text-gray-500">Elo Touch Support — KPI Dashboard</p>
         </div>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-600">{user.name || user.email}</span>
