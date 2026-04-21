@@ -8,6 +8,7 @@ import { initDb } from './db.js';
 import { getGroups, getGroupMembers, searchTickets, searchTicketsByAssignees, getUsersByIds, getTicketAudits } from './zendesk.js';
 import { calculateTicketMetrics, aggregateByAssignee, median } from './metrics.js';
 import { calculateProductivityMetrics, aggregateProductivityByAssignee } from './productivityMetrics.js';
+import { isAutomationSubject } from './automationFilter.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -76,7 +77,7 @@ app.get('/api/groups', requireAuth, async (req, res) => {
 });
 
 app.get('/api/metrics/stream', requireAuth, metricsLimiter, async (req, res) => {
-  const { group_id, start, end } = req.query;
+  const { group_id, start, end, exclude_eloview } = req.query;
 
   if (!group_id || !start || !end) {
     return res.status(400).json({ error: 'group_id, start, and end are required' });
@@ -105,6 +106,8 @@ app.get('/api/metrics/stream', requireAuth, metricsLimiter, async (req, res) => 
   if (endDate - startDate > 365 * 24 * 60 * 60 * 1000) {
     return res.status(400).json({ error: 'Date range cannot exceed 1 year' });
   }
+
+  const excludeEloview = exclude_eloview === 'true';
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -141,19 +144,14 @@ app.get('/api/metrics/stream', requireAuth, metricsLimiter, async (req, res) => 
       }
     }
 
-    const EXCLUDED_SUBJECTS = [
-      'Customer signup notification',
-      'Customer cancelled subscription',
-      'Customer subscription expired',
-    ];
-    const filtered = merged.filter(
-      (t) => !EXCLUDED_SUBJECTS.some((s) => t.subject === s)
-    );
+    const filtered = merged.filter((t) => !isAutomationSubject(t.subject));
+    const ticketsToProcess = excludeEloview
+      ? filtered.filter((t) => !(t.tags || []).includes('ev_new_message'))
+      : filtered;
     send({
       type: 'status',
-      message: `Found ${filtered.length} tickets. Fetching audits...`,
+      message: `Found ${ticketsToProcess.length} tickets. Fetching audits...`,
     });
-    const ticketsToProcess = filtered;
 
     if (ticketsToProcess.length === 0) {
       send({ type: 'complete', data: { assignees: [], totals: {}, ticketCount: 0 } });
@@ -164,7 +162,7 @@ app.get('/api/metrics/stream', requireAuth, metricsLimiter, async (req, res) => 
 
     const usersMap = new Map(members.map((u) => [u.id, u]));
     const unknownIds = [...new Set(
-      filtered.map((t) => t.assignee_id).filter((id) => id != null && !usersMap.has(id))
+      ticketsToProcess.map((t) => t.assignee_id).filter((id) => id != null && !usersMap.has(id))
     )];
     if (unknownIds.length > 0) {
       const unknownUsers = await getUsersByIds(unknownIds);
@@ -255,7 +253,7 @@ app.get('/api/metrics/stream', requireAuth, metricsLimiter, async (req, res) => 
 
 // Agent Productivity SSE stream
 app.get('/api/productivity/stream', requireAuth, metricsLimiter, async (req, res) => {
-  const { group_id, start, end } = req.query;
+  const { group_id, start, end, exclude_eloview } = req.query;
 
   if (!group_id || !start || !end) {
     return res.status(400).json({ error: 'group_id, start, and end are required' });
@@ -275,6 +273,8 @@ app.get('/api/productivity/stream', requireAuth, metricsLimiter, async (req, res
   if (endDate - startDate > 365 * 24 * 60 * 60 * 1000) {
     return res.status(400).json({ error: 'Date range cannot exceed 1 year' });
   }
+
+  const excludeEloview = exclude_eloview === 'true';
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -320,14 +320,12 @@ app.get('/api/productivity/stream', requireAuth, metricsLimiter, async (req, res
       }
     }
 
-    const EXCLUDED_SUBJECTS = [
-      'Customer signup notification',
-      'Customer cancelled subscription',
-      'Customer subscription expired',
-    ];
-    const filtered = merged.filter(
-      (t) => !EXCLUDED_SUBJECTS.some((s) => t.subject === s)
-    );
+    // Productivity tab routes automation tickets to "Zendesk Agent" row rather than
+    // hard-excluding them, so we don't apply isAutomationSubject here — it's handled
+    // per-ticket in calculateProductivityMetrics via isSubjectAutomation.
+    const filtered = excludeEloview
+      ? merged.filter((t) => !(t.tags || []).includes('ev_new_message'))
+      : merged;
 
     send({
       type: 'status',

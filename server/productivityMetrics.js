@@ -1,30 +1,27 @@
 import { businessSeconds, median } from './metrics.js';
+import { isAutomationSubject } from './automationFilter.js';
 
 const PHONE_TAGS = ['phone_caseorigin'];
 const CHAT_TAGS = ['chat_offline', 'chat_caseorigin'];
 const EMAIL_TAGS = ['email_caseorigin', 'web_caseorigin'];
 const ELOVIEW_TAG = 'ev_new_message';
 
-const AUTOMATION_SUBJECT_CONTAINS = [
-  'customer signup summary notification',
-  'customer signup notification',
-  'customer cancelled subscription',
-  'call could not be transcribed or summarized',
-];
-
-function isAutomationSubject(subject) {
-  if (!subject) return false;
-  const lower = subject.toLowerCase();
-  if (AUTOMATION_SUBJECT_CONTAINS.some((s) => lower.includes(s))) return true;
-  if (lower.startsWith('abandoned call from:')) return true;
-  return false;
-}
+// Author IDs for Zendesk automation users (triggers, system) that should not count
+// as a human first reply. Set AUTOMATION_AUTHOR_IDS env var as a comma-separated list.
+const AUTOMATION_AUTHOR_IDS = new Set(
+  (process.env.AUTOMATION_AUTHOR_IDS || '').split(',').filter(Boolean).map(Number)
+);
 
 function getChannel(ticket) {
   const tags = ticket.tags || [];
   if (PHONE_TAGS.some((t) => tags.includes(t))) return 'phone';
   if (CHAT_TAGS.some((t) => tags.includes(t))) return 'chat';
   if (EMAIL_TAGS.some((t) => tags.includes(t))) return 'email';
+  // Fallback to Zendesk native channel field when tags are absent
+  const via = ticket.via?.channel;
+  if (via === 'voice' || via === 'phone') return 'phone';
+  if (via === 'chat' || via === 'web_widget') return 'chat';
+  if (via === 'email' || via === 'api' || via === 'web' || via === 'web_form') return 'email';
   return 'other';
 }
 
@@ -38,11 +35,13 @@ export function calculateProductivityMetrics(ticket, audits) {
 
   for (const audit of sorted) {
     for (const event of audit.events) {
-      // Public agent comment
+      // Public agent comment — exclude known automation author IDs so trigger-fired
+      // acknowledgment emails don't register as a human first reply
       if (
         event.type === 'Comment' &&
         event.public === true &&
-        audit.author_id !== ticket.requester_id
+        audit.author_id !== ticket.requester_id &&
+        !AUTOMATION_AUTHOR_IDS.has(audit.author_id)
       ) {
         agentReplies++;
         if (!firstReplyTs) firstReplyTs = new Date(audit.created_at);
@@ -56,7 +55,8 @@ export function calculateProductivityMetrics(ticket, audits) {
 
       // Status changes
       if (event.type === 'Change' && event.field_name === 'status') {
-        // First time ticket reaches solved
+        // Capture first solve only — resolutionBizSeconds = time from creation to first solve.
+        // Tickets that are reopened and re-solved show time-to-first-solve by design.
         if (event.value === 'solved' && !firstResolvedTs) {
           firstResolvedTs = new Date(audit.created_at);
         }

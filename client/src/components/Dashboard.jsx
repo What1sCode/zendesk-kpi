@@ -51,14 +51,17 @@ export default function Dashboard() {
   const [error, setError] = useState('');
   const [useBizHours, setUseBizHours] = useState(true);
   const [useMedian, setUseMedian] = useState(false);
+  const [excludeEloview, setExcludeEloview] = useState(false);
   const eventSourceRef = useRef(null);
 
   useEffect(() => {
+    const pad = (n) => String(n).padStart(2, '0');
+    const localDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const end = new Date();
     const start = new Date();
     start.setDate(start.getDate() - 30);
-    setStartDate(start.toISOString().split('T')[0]);
-    setEndDate(end.toISOString().split('T')[0]);
+    setStartDate(localDateStr(start));
+    setEndDate(localDateStr(end));
   }, []);
 
   function handleGenerate() {
@@ -74,7 +77,7 @@ export default function Dashboard() {
     setData(null);
     setError('');
 
-    const params = new URLSearchParams({ group_id: groupId, start: startDate, end: endDate });
+    const params = new URLSearchParams({ group_id: groupId, start: startDate, end: endDate, exclude_eloview: excludeEloview });
     const es = new EventSource(`/api/metrics/stream?${params}`);
     eventSourceRef.current = es;
 
@@ -129,6 +132,15 @@ export default function Dashboard() {
           >
             {loading ? 'Loading...' : 'Generate Report'}
           </button>
+          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer ml-2">
+            <input
+              type="checkbox"
+              checked={excludeEloview}
+              onChange={(e) => setExcludeEloview(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            Exclude Eloview
+          </label>
         </div>
 
         {loading && (

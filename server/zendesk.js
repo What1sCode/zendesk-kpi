@@ -1,4 +1,18 @@
 const BASE_URL = `https://${process.env.ZENDESK_SUBDOMAIN}.zendesk.com/api/v2`;
+
+// Returns the UTC ISO string for midnight America/New_York on a given YYYY-MM-DD date.
+// Handles DST correctly by sampling the ET offset at noon UTC on that date.
+function etMidnightUtc(dateStr) {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const noonUtc = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const etNoonHour = +([...new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    hour12: false,
+  }).formatToParts(noonUtc)].find((p) => p.type === 'hour').value);
+  const offsetHours = 12 - (etNoonHour === 24 ? 0 : etNoonHour);
+  return new Date(Date.UTC(year, month - 1, day, offsetHours, 0, 0)).toISOString();
+}
 const AUTH = Buffer.from(
   `${process.env.ZENDESK_EMAIL}/token:${process.env.ZENDESK_API_TOKEN}`
 ).toString('base64');
@@ -60,12 +74,12 @@ export async function searchTickets(groupId, startDate, endDate, onChunkStatus) 
   const seenIds = new Set();
 
   for (let i = 0; i < chunks.length; i++) {
-    const { start, end } = chunks[i];
+    const { start, end, startUtc, endExclusiveUtc } = chunks[i];
     if (onChunkStatus) {
       onChunkStatus(`Searching tickets (week ${i + 1}/${chunks.length}: ${start} to ${end})...`);
     }
 
-    const query = `type:ticket group:${groupId} created>=${start} created<=${end}`;
+    const query = `type:ticket group:${groupId} created>=${startUtc} created<${endExclusiveUtc}`;
     let page = 1;
     let hasMore = true;
 
@@ -89,21 +103,32 @@ export async function searchTickets(groupId, startDate, endDate, onChunkStatus) 
 
 function buildWeeklyChunks(startDate, endDate) {
   const chunks = [];
-  let current = new Date(startDate);
-  const end = new Date(endDate);
+  // Use noon UTC to avoid any date-boundary shifts when parsing bare date strings
+  let current = new Date(startDate + 'T12:00:00Z');
+  const end = new Date(endDate + 'T12:00:00Z');
 
   while (current <= end) {
     const chunkEnd = new Date(current);
-    chunkEnd.setDate(chunkEnd.getDate() + 6);
+    chunkEnd.setUTCDate(chunkEnd.getUTCDate() + 6);
     const actualEnd = chunkEnd > end ? end : chunkEnd;
 
+    const startStr = current.toISOString().split('T')[0];
+    const endStr = actualEnd.toISOString().split('T')[0];
+
+    // Next calendar day after end — used as exclusive upper bound in the query
+    const nextDay = new Date(actualEnd);
+    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+    const nextDayStr = nextDay.toISOString().split('T')[0];
+
     chunks.push({
-      start: current.toISOString().split('T')[0],
-      end: actualEnd.toISOString().split('T')[0],
+      start: startStr,
+      end: endStr,
+      // ET-midnight UTC timestamps align the query with Explore's account-timezone date picker
+      startUtc: etMidnightUtc(startStr),
+      endExclusiveUtc: etMidnightUtc(nextDayStr),
     });
 
-    current = new Date(actualEnd);
-    current.setDate(current.getDate() + 1);
+    current = new Date(nextDay);
   }
 
   return chunks;
@@ -119,13 +144,13 @@ export async function searchTicketsByAssignees(userIds, startDate, endDate, onCh
   const totalChunks = chunks.length * userIds.length;
 
   for (const userId of userIds) {
-    for (const { start, end } of chunks) {
+    for (const { start, end, startUtc, endExclusiveUtc } of chunks) {
       chunkIndex++;
       if (onChunkStatus) {
         onChunkStatus(`Searching tickets for agents (${chunkIndex}/${totalChunks})...`);
       }
 
-      const query = `type:ticket assignee:${userId} created>=${start} created<=${end}`;
+      const query = `type:ticket assignee:${userId} created>=${startUtc} created<${endExclusiveUtc}`;
       let page = 1;
       let hasMore = true;
 

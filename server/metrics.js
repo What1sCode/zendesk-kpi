@@ -1,7 +1,27 @@
-// Business hours: Monday-Friday, 8am-5pm America/New_York
+// Business hours: Monday-Friday, 8am-5pm America/New_York (holidays excluded)
 const BIZ_START_HOUR = 8;
 const BIZ_END_HOUR = 17;
 const TZ = 'America/New_York';
+
+// US federal holidays by ET date string. Update annually or extend via HOLIDAY_DATES env var
+// (comma-separated YYYY-MM-DD values appended to the built-in list).
+const BUILTIN_HOLIDAYS = new Set([
+  // 2025
+  '2025-01-01', '2025-01-20', '2025-02-17', '2025-05-26',
+  '2025-06-19', '2025-07-04', '2025-09-01', '2025-10-13',
+  '2025-11-11', '2025-11-27', '2025-12-25',
+  // 2026
+  '2026-01-01', '2026-01-19', '2026-02-16', '2026-05-25',
+  '2026-06-19', '2026-07-03', '2026-09-07', '2026-10-12',
+  '2026-11-11', '2026-11-26', '2026-12-25',
+]);
+const HOLIDAYS = (() => {
+  const extra = (process.env.HOLIDAY_DATES || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (extra.length === 0) return BUILTIN_HOLIDAYS;
+  const set = new Set(BUILTIN_HOLIDAYS);
+  for (const d of extra) set.add(d);
+  return set;
+})();
 
 // Convert a UTC Date to Eastern time components
 function toEastern(utcDate) {
@@ -71,12 +91,13 @@ export function businessSeconds(startUtc, endUtc) {
     if (dayStartUtc >= endUtc) break; // Past the end
 
     if (dayET.isWeekday) {
-      // Calculate overlap between [startUtc, endUtc] and [dayStartUtc, dayEndUtc]
-      const overlapStart = startUtc > dayStartUtc ? startUtc : dayStartUtc;
-      const overlapEnd = endUtc < dayEndUtc ? endUtc : dayEndUtc;
-
-      if (overlapEnd > overlapStart) {
-        total += (overlapEnd - overlapStart) / 1000;
+      const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`;
+      if (!HOLIDAYS.has(dateStr)) {
+        const overlapStart = startUtc > dayStartUtc ? startUtc : dayStartUtc;
+        const overlapEnd = endUtc < dayEndUtc ? endUtc : dayEndUtc;
+        if (overlapEnd > overlapStart) {
+          total += (overlapEnd - overlapStart) / 1000;
+        }
       }
     }
 
